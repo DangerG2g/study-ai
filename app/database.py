@@ -1,214 +1,255 @@
-import sqlite3
+import os
 from contextlib import contextmanager
 from pathlib import Path
-import os
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = Path(os.getenv("STUDY_DB_PATH", str(BASE_DIR / "study.db")))
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+import psycopg
+from psycopg.rows import dict_row
+
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise RuntimeError('DATABASE_URL is required. Connect a PostgreSQL database in Render and set DATABASE_URL.')
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(30) NOT NULL,
+    username_normalized VARCHAR(30) NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until TIMESTAMPTZ NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS subjects (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS chapters (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject_id BIGINT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
     name TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS notes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    chapter_id INTEGER NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    chapter_id BIGINT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     body TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS pdf_files (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    chapter_id INTEGER NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    chapter_id BIGINT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
     original_name TEXT NOT NULL,
-    stored_name TEXT NOT NULL,
     page_count INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    data BYTEA NOT NULL,
+    file_type VARCHAR(10) NOT NULL DEFAULT 'pdf',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS pdf_pages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    pdf_id INTEGER NOT NULL REFERENCES pdf_files(id) ON DELETE CASCADE,
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pdf_id BIGINT NOT NULL REFERENCES pdf_files(id) ON DELETE CASCADE,
     page_number INTEGER NOT NULL,
     text TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_subjects_user ON subjects(user_id);
+CREATE INDEX IF NOT EXISTS idx_chapters_user ON chapters(user_id);
+CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id);
+CREATE INDEX IF NOT EXISTS idx_pdf_user ON pdf_files(user_id);
+CREATE INDEX IF NOT EXISTS idx_pdf_pages_user ON pdf_pages(user_id);
+ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS file_type VARCHAR(10) NOT NULL DEFAULT 'pdf';
 """
 
 @contextmanager
 def connect():
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    try:
+    with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
         yield conn
-        conn.commit()
-    finally:
-        conn.close()
+
 
 def init_db():
     with connect() as conn:
-        conn.executescript(SCHEMA)
+        conn.execute(SCHEMA)
 
-def list_subjects():
+# ---------- users / authentication ----------
+def get_user_by_username(username):
     with connect() as conn:
-        return conn.execute("""
-            SELECT s.id, s.name, COUNT(c.id) AS chapter_count
-            FROM subjects s LEFT JOIN chapters c ON c.subject_id=s.id
-            GROUP BY s.id ORDER BY s.name COLLATE NOCASE
-        """).fetchall()
+        return conn.execute('SELECT * FROM users WHERE username_normalized=%s', (username.strip().lower(),)).fetchone()
 
-def dashboard_data():
+
+def get_user(user_id):
     with connect() as conn:
-        subjects = conn.execute("""
-            SELECT s.id, s.name, COUNT(c.id) AS chapter_count
-            FROM subjects s LEFT JOIN chapters c ON c.subject_id=s.id
-            GROUP BY s.id ORDER BY s.name COLLATE NOCASE
-        """).fetchall()
-        total_chapters = conn.execute("SELECT COUNT(*) FROM chapters").fetchone()[0]
-        total_notes = conn.execute("SELECT COUNT(*) FROM notes").fetchone()[0]
-        total_pdfs = conn.execute("SELECT COUNT(*) FROM pdf_files").fetchone()[0]
-        chapters = conn.execute("""
-            SELECT c.id, c.name, c.subject_id, s.name subject_name
+        return conn.execute('SELECT id, username, created_at FROM users WHERE id=%s', (user_id,)).fetchone()
+
+
+def create_user(username, password_hash):
+    u = username.strip()
+    with connect() as conn:
+        return conn.execute(
+            'INSERT INTO users(username,username_normalized,password_hash) VALUES(%s,%s,%s) RETURNING id,username',
+            (u, u.lower(), password_hash)
+        ).fetchone()
+
+
+def record_failed_login(user_id, attempts, locked_until):
+    with connect() as conn:
+        conn.execute('UPDATE users SET failed_attempts=%s, locked_until=%s WHERE id=%s', (attempts, locked_until, user_id))
+
+
+def reset_login_failures(user_id):
+    with connect() as conn:
+        conn.execute('UPDATE users SET failed_attempts=0, locked_until=NULL WHERE id=%s', (user_id,))
+
+# ---------- dashboard / study data ----------
+def dashboard_data(user_id):
+    with connect() as conn:
+        subjects = conn.execute('''
+            SELECT s.id, s.name, COUNT(c.id)::int AS chapter_count
+            FROM subjects s LEFT JOIN chapters c ON c.subject_id=s.id AND c.user_id=s.user_id
+            WHERE s.user_id=%s GROUP BY s.id ORDER BY s.name COLLATE "C"
+        ''', (user_id,)).fetchall()
+        total_chapters = conn.execute('SELECT COUNT(*) FROM chapters WHERE user_id=%s', (user_id,)).fetchone()['count']
+        total_notes = conn.execute('SELECT COUNT(*) FROM notes WHERE user_id=%s', (user_id,)).fetchone()['count']
+        total_pdfs = conn.execute('SELECT COUNT(*) FROM pdf_files WHERE user_id=%s', (user_id,)).fetchone()['count']
+        chapters = conn.execute('''
+            SELECT c.id,c.name,c.subject_id,s.name AS subject_name
             FROM chapters c JOIN subjects s ON s.id=c.subject_id
-            ORDER BY s.name COLLATE NOCASE, c.name COLLATE NOCASE
-        """).fetchall()
-    return subjects, chapters, {"chapters": total_chapters, "notes": total_notes, "pdfs": total_pdfs}
+            WHERE c.user_id=%s AND s.user_id=%s
+            ORDER BY s.name COLLATE "C", c.name COLLATE "C"
+        ''', (user_id, user_id)).fetchall()
+    return subjects, chapters, {'chapters': total_chapters, 'notes': total_notes, 'pdfs': total_pdfs}
 
-def get_subject(subject_id):
-    with connect() as conn:
-        return conn.execute("SELECT id,name FROM subjects WHERE id=?", (subject_id,)).fetchone()
 
-def add_subject(name):
+def get_subject(user_id, subject_id):
     with connect() as conn:
-        return conn.execute("INSERT INTO subjects(name) VALUES(?)", (name,)).lastrowid
+        return conn.execute('SELECT id,name,user_id FROM subjects WHERE id=%s AND user_id=%s', (subject_id,user_id)).fetchone()
 
-def rename_subject(subject_id, name):
-    with connect() as conn:
-        conn.execute("UPDATE subjects SET name=? WHERE id=?", (name, subject_id))
 
-def delete_subject(subject_id):
+def list_chapters(user_id, subject_id):
     with connect() as conn:
-        rows = conn.execute("""
-            SELECT p.stored_name FROM pdf_files p
-            JOIN chapters c ON c.id=p.chapter_id WHERE c.subject_id=?
-        """, (subject_id,)).fetchall()
-        conn.execute("DELETE FROM subjects WHERE id=?", (subject_id,))
-    return [r["stored_name"] for r in rows]
+        return conn.execute('''
+            SELECT c.id,c.name,c.subject_id,
+              (SELECT COUNT(*) FROM notes n WHERE n.chapter_id=c.id AND n.user_id=%s) AS note_count,
+              (SELECT COUNT(*) FROM pdf_files p WHERE p.chapter_id=c.id AND p.user_id=%s) AS pdf_count
+            FROM chapters c WHERE c.id IN (SELECT id FROM chapters WHERE subject_id=%s AND user_id=%s)
+            ORDER BY c.name COLLATE "C"
+        ''', (user_id,user_id,subject_id,user_id)).fetchall()
 
-def list_chapters(subject_id):
-    with connect() as conn:
-        return conn.execute("""
-            SELECT c.id,c.name,
-            (SELECT COUNT(*) FROM notes n WHERE n.chapter_id=c.id) note_count,
-            (SELECT COUNT(*) FROM pdf_files p WHERE p.chapter_id=c.id) pdf_count
-            FROM chapters c WHERE c.subject_id=? ORDER BY c.id
-        """, (subject_id,)).fetchall()
 
-def get_chapter(chapter_id):
+def list_all_chapters(user_id):
     with connect() as conn:
-        return conn.execute("""
-            SELECT c.id,c.name,c.subject_id,s.name subject_name
-            FROM chapters c JOIN subjects s ON s.id=c.subject_id
-            WHERE c.id=?
-        """, (chapter_id,)).fetchone()
+        return conn.execute('''SELECT c.id,c.name,c.subject_id,s.name AS subject_name FROM chapters c JOIN subjects s ON s.id=c.subject_id WHERE c.user_id=%s AND s.user_id=%s ORDER BY s.name,c.name''', (user_id,user_id)).fetchall()
 
-def add_chapter(subject_id, name):
-    with connect() as conn:
-        return conn.execute("INSERT INTO chapters(subject_id,name) VALUES(?,?)", (subject_id,name)).lastrowid
 
-def rename_chapter(chapter_id, name):
+def add_subject(user_id, name):
     with connect() as conn:
-        conn.execute("UPDATE chapters SET name=? WHERE id=?", (name, chapter_id))
+        return conn.execute('INSERT INTO subjects(user_id,name) VALUES(%s,%s) RETURNING id', (user_id,name)).fetchone()['id']
 
-def delete_chapter(chapter_id):
-    with connect() as conn:
-        rows = conn.execute("SELECT stored_name FROM pdf_files WHERE chapter_id=?", (chapter_id,)).fetchall()
-        conn.execute("DELETE FROM chapters WHERE id=?", (chapter_id,))
-    return [r["stored_name"] for r in rows]
 
-def list_notes(chapter_id):
+def rename_subject(user_id, subject_id, name):
     with connect() as conn:
-        return conn.execute("""
-            SELECT id,title,body,created_at FROM notes
-            WHERE chapter_id=? ORDER BY id DESC
-        """, (chapter_id,)).fetchall()
+        conn.execute('UPDATE subjects SET name=%s WHERE id=%s AND user_id=%s', (name,subject_id,user_id))
 
-def get_note(note_id):
-    with connect() as conn:
-        return conn.execute("SELECT id,chapter_id FROM notes WHERE id=?", (note_id,)).fetchone()
 
-def add_note(chapter_id,title,body):
+def delete_subject(user_id, subject_id):
     with connect() as conn:
-        return conn.execute("INSERT INTO notes(chapter_id,title,body) VALUES(?,?,?)", (chapter_id,title,body)).lastrowid
+        conn.execute('DELETE FROM subjects WHERE id=%s AND user_id=%s', (subject_id,user_id))
 
-def delete_note(note_id):
-    with connect() as conn:
-        conn.execute("DELETE FROM notes WHERE id=?", (note_id,))
 
-def list_pdfs(chapter_id):
+def get_chapter(user_id, chapter_id):
     with connect() as conn:
-        return conn.execute("""
-            SELECT p.id,p.original_name,p.page_count,p.created_at,
-            (SELECT COUNT(*) FROM pdf_pages g WHERE g.pdf_id=p.id) text_pages
-            FROM pdf_files p WHERE p.chapter_id=? ORDER BY p.id DESC
-        """, (chapter_id,)).fetchall()
+        return conn.execute('''SELECT c.id,c.name,c.subject_id,c.user_id,s.name AS subject_name FROM chapters c JOIN subjects s ON s.id=c.subject_id WHERE c.id=%s AND c.user_id=%s AND s.user_id=%s''', (chapter_id,user_id,user_id)).fetchone()
 
-def get_pdf(pdf_id):
-    with connect() as conn:
-        return conn.execute("SELECT id,chapter_id,original_name,stored_name FROM pdf_files WHERE id=?", (pdf_id,)).fetchone()
 
-def get_pdf_pages(pdf_id):
+def add_chapter(user_id, subject_id, name):
     with connect() as conn:
-        return conn.execute("SELECT page_number, text FROM pdf_pages WHERE pdf_id=? ORDER BY page_number", (pdf_id,)).fetchall()
+        return conn.execute('INSERT INTO chapters(user_id,subject_id,name) SELECT %s,id,%s FROM subjects WHERE id=%s AND user_id=%s RETURNING id', (user_id,name,subject_id,user_id)).fetchone()
 
-def add_pdf(chapter_id,original_name,stored_name,page_count,pages):
+
+def rename_chapter(user_id, chapter_id, name):
     with connect() as conn:
-        pdf_id = conn.execute("""
-            INSERT INTO pdf_files(chapter_id,original_name,stored_name,page_count)
-            VALUES(?,?,?,?)
-        """, (chapter_id,original_name,stored_name,page_count)).lastrowid
-        conn.executemany("INSERT INTO pdf_pages(pdf_id,page_number,text) VALUES(?,?,?)", [(pdf_id,n,t) for n,t in pages])
+        conn.execute('UPDATE chapters SET name=%s WHERE id=%s AND user_id=%s', (name,chapter_id,user_id))
+
+
+def delete_chapter(user_id, chapter_id):
+    with connect() as conn:
+        conn.execute('DELETE FROM chapters WHERE id=%s AND user_id=%s', (chapter_id,user_id))
+
+
+def update_note(user_id, note_id, title, body):
+    with connect() as conn:
+        conn.execute('UPDATE notes SET title=%s, body=%s WHERE id=%s AND user_id=%s', (title,body,note_id,user_id))
+
+
+def list_notes(user_id, chapter_id):
+    with connect() as conn:
+        return conn.execute('SELECT id,title,body,chapter_id FROM notes WHERE chapter_id=%s AND user_id=%s ORDER BY id DESC', (chapter_id,user_id)).fetchall()
+
+
+def get_note(user_id, note_id):
+    with connect() as conn:
+        return conn.execute('SELECT * FROM notes WHERE id=%s AND user_id=%s', (note_id,user_id)).fetchone()
+
+
+def add_note(user_id, chapter_id, title, body):
+    with connect() as conn:
+        return conn.execute('INSERT INTO notes(user_id,chapter_id,title,body) SELECT %s,id,%s,%s FROM chapters WHERE id=%s AND user_id=%s RETURNING id', (user_id,title,body,chapter_id,user_id)).fetchone()
+
+
+def delete_note(user_id, note_id):
+    with connect() as conn:
+        conn.execute('DELETE FROM notes WHERE id=%s AND user_id=%s', (note_id,user_id))
+
+
+def add_pdf(user_id, chapter_id, original_name, data, page_count, pages, file_type='pdf'):
+    with connect() as conn:
+        row = conn.execute('INSERT INTO pdf_files(user_id,chapter_id,original_name,page_count,data,file_type) SELECT %s,id,%s,%s,%s,%s,%s FROM chapters WHERE id=%s AND user_id=%s RETURNING id', (user_id,original_name,page_count,data,file_type,chapter_id,user_id)).fetchone()
+        if not row:
+            return None
+        pdf_id = row['id']
+        conn.executemany('INSERT INTO pdf_pages(user_id,pdf_id,page_number,text) VALUES(%s,%s,%s,%s)', [(user_id,pdf_id,n,t) for n,t in pages])
         return pdf_id
 
-def delete_pdf(pdf_id):
+
+def list_pdfs(user_id, chapter_id):
     with connect() as conn:
-        conn.execute("DELETE FROM pdf_files WHERE id=?", (pdf_id,))
+        return conn.execute('''SELECT p.id,p.original_name,p.page_count,p.file_type,p.created_at,COUNT(pg.id)::int AS text_pages FROM pdf_files p LEFT JOIN pdf_pages pg ON pg.pdf_id=p.id AND pg.user_id=%s WHERE p.chapter_id=%s AND p.user_id=%s GROUP BY p.id ORDER BY p.id DESC''', (user_id,chapter_id,user_id)).fetchall()
 
-def _like_pattern(word):
-    escaped = word.replace("!","!!").replace("%","!%").replace("_","!_")
-    return f"%{escaped}%"
 
-def make_snippet(text,word,width=70):
-    flat=" ".join(text.split())
-    pos=flat.lower().find(word.lower())
-    if pos == -1:
-        return {"before":flat[:width*2],"match":"","after":""}
+def get_pdf(user_id, pdf_id, include_data=False):
+    with connect() as conn:
+        cols='p.id,p.original_name,p.page_count,p.file_type,p.chapter_id,p.user_id' + (',p.data' if include_data else '')
+        return conn.execute(f'''SELECT {cols} FROM pdf_files p WHERE p.id=%s AND p.user_id=%s''', (pdf_id,user_id)).fetchone()
+
+
+def get_pdf_pages(user_id, pdf_id):
+    with connect() as conn:
+        return conn.execute('SELECT page_number,text FROM pdf_pages WHERE pdf_id=%s AND user_id=%s ORDER BY page_number', (pdf_id,user_id)).fetchall()
+
+
+def delete_pdf(user_id, pdf_id):
+    with connect() as conn:
+        conn.execute('DELETE FROM pdf_files WHERE id=%s AND user_id=%s', (pdf_id,user_id))
+
+
+def make_snippet(text, word, width=70):
+    flat=' '.join(text.split()); pos=flat.lower().find(word.lower())
+    if pos == -1: return {'before':flat[:width*2],'match':'','after':''}
     start=max(0,pos-width); end=min(len(flat),pos+len(word)+width)
-    return {"before":("…" if start else "")+flat[start:pos],"match":flat[pos:pos+len(word)],"after":flat[pos+len(word):end]+("…" if end<len(flat) else "")}
+    return {'before':('…' if start else '')+flat[start:pos],'match':flat[pos:pos+len(word)],'after':flat[pos+len(word):end]+('…' if end<len(flat) else '')}
 
-def search(query,limit=50):
+
+def search(user_id, query, limit=50):
     words=query.split()[:6]
-    if not words: return {"notes":[],"pages":[]}
-    patterns=[_like_pattern(w) for w in words]
-    note_where=" AND ".join("(n.title LIKE ? ESCAPE '!' OR n.body LIKE ? ESCAPE '!')" for _ in words)
+    if not words: return {'notes':[],'pages':[]}
+    patterns=[f'%{w}%' for w in words]
+    note_where=' AND '.join('(n.title ILIKE %s OR n.body ILIKE %s)' for _ in words)
     note_params=[p for p in patterns for _ in range(2)]
-    page_where=" AND ".join("pg.text LIKE ? ESCAPE '!'" for _ in words)
+    page_where=' AND '.join('pg.text ILIKE %s' for _ in words)
     with connect() as conn:
-        notes_rows=conn.execute(f"""
-            SELECT n.id,n.title,n.body,c.id chapter_id,c.name chapter_name,s.name subject_name
-            FROM notes n JOIN chapters c ON c.id=n.chapter_id JOIN subjects s ON s.id=c.subject_id
-            WHERE {note_where} ORDER BY n.id DESC LIMIT ?
-        """, note_params+[limit]).fetchall()
-        page_rows=conn.execute(f"""
-            SELECT pg.page_number,pg.text,p.id pdf_id,p.original_name,c.id chapter_id,c.name chapter_name,s.name subject_name
-            FROM pdf_pages pg JOIN pdf_files p ON p.id=pg.pdf_id JOIN chapters c ON c.id=p.chapter_id JOIN subjects s ON s.id=c.subject_id
-            WHERE {page_where} ORDER BY p.id DESC,pg.page_number LIMIT ?
-        """, patterns+[limit]).fetchall()
+        notes_rows=conn.execute(f'''SELECT n.id,n.title,n.body,c.id AS chapter_id,c.name AS chapter_name,s.name AS subject_name FROM notes n JOIN chapters c ON c.id=n.chapter_id JOIN subjects s ON s.id=c.subject_id WHERE n.user_id=%s AND c.user_id=%s AND s.user_id=%s AND {note_where} ORDER BY n.id DESC LIMIT %s''', [user_id,user_id,user_id,*note_params,limit]).fetchall()
+        page_rows=conn.execute(f'''SELECT pg.page_number,pg.text,p.id AS pdf_id,p.original_name,c.id AS chapter_id,c.name AS chapter_name,s.name AS subject_name FROM pdf_pages pg JOIN pdf_files p ON p.id=pg.pdf_id JOIN chapters c ON c.id=p.chapter_id JOIN subjects s ON s.id=c.subject_id WHERE pg.user_id=%s AND p.user_id=%s AND c.user_id=%s AND s.user_id=%s AND {page_where} ORDER BY p.id DESC,pg.page_number LIMIT %s''', [user_id,user_id,user_id,user_id,*patterns,limit]).fetchall()
     first=words[0]
-    return {"notes":[dict(r,snippet=make_snippet(r["body"],first)) for r in notes_rows],"pages":[dict(r,snippet=make_snippet(r["text"],first)) for r in page_rows]}
+    return {'notes':[dict(r,snippet=make_snippet(r['body'],first)) for r in notes_rows], 'pages':[dict(r,snippet=make_snippet(r['text'],first)) for r in page_rows]}

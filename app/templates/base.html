@@ -1,29 +1,42 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{% block title %}Study AI{% endblock %}</title><link rel="stylesheet" href="/static/style.css">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}Study AI{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<div class="ambient"><i></i><i></i><i></i><span class="orb orb1"></span><span class="orb orb2"></span></div>
 <div class="app-shell">
-<aside class="sidebar">
-<a class="brand" href="/"><span class="brand-icon">✦</span><span>Study<span>AI</span></span></a>
-<nav>
-<a class="nav-item" href="/"><span>⌂</span> Dashboard</a>
-<a class="nav-item" href="/#subjects"><span>▣</span> My Subjects</a>
-<a class="nav-item" href="/search"><span>⌕</span> Smart Search</a>
-</nav>
-<div class="sidebar-bottom"><div class="mini-card"><span class="mini-icon">✦</span><div><b>Study smarter</b><small>Keep everything in one place.</small></div></div></div>
-</aside>
-<section class="main-area">
-<header class="topbar"><div class="mobile-brand"><a href="/">✦ StudyAI</a></div>
-<form class="search" action="/search" method="get"><span>⌕</span><input name="q" value="{{ query|default('') }}" placeholder="Search your notes, PDFs and chapters..."><button type="submit">Search</button></form>
-<div class="profile"><div class="avatar">S</div><div><b>Student</b><small>My workspace</small></div></div></header>
-<main class="content">{% block content %}{% endblock %}</main></section></div>
+  <aside class="sidebar">
+    <a class="brand" href="/"><span class="brand-mark">✦</span><span>Study<span>AI</span></span></a>
+    {% if user %}
+    <nav>
+      <a href="/" class="nav-link">⌂ <span>Dashboard</span></a>
+      <a href="/search" class="nav-link">⌕ <span>Search knowledge</span></a>
+    </nav>
+    <div class="side-label">MY SPACE</div>
+    <div class="mini-note">Build your own study universe. Add subjects, chapters and learning material.</div>
+    <div class="sidebar-bottom">
+      <div class="profile-mini"><div class="avatar">{{ user.username[0]|upper }}</div><div><b>{{ user.username }}</b><small>Student</small></div></div>
+      <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="logout">↪ Log out</button></form>
+    </div>
+    {% endif %}
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <div class="crumb">{% block crumb %}Workspace{% endblock %}</div>
+      {% if user %}<form class="top-search" action="/search" method="get"><span>⌕</span><input name="q" placeholder="Search notes, PDFs, topics..." value="{{ query|default('') }}"></form><div class="top-avatar">{{ user.username[0]|upper }}</div>{% endif %}
+    </header>
+    <section class="content">{% block content %}{% endblock %}</section>
+  </main>
+</div>
 <script>
-function speakText(text){if(!('speechSynthesis'in window)){alert('Text-to-speech is not supported in this browser.');return;}speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(text));}
-function stopSpeaking(){if('speechSynthesis'in window)speechSynthesis.cancel();}
-function openDialog(id){const d=document.getElementById(id);if(d)d.showModal();}
-function filterChapterOptions(subjectId){document.querySelectorAll('#uploadChapter option[data-subject]').forEach(o=>o.hidden=subjectId && o.dataset.subject!==subjectId);document.querySelectorAll('#noteChapter option[data-subject]').forEach(o=>o.hidden=subjectId && o.dataset.subject!==subjectId);}
+function speakText(text){if(!('speechSynthesis' in window))return; speechSynthesis.cancel();let u=new SpeechSynthesisUtterance(text);u.rate=.96;u.pitch=1;speechSynthesis.speak(u)}
+function stopSpeaking(){if('speechSynthesis' in window)speechSynthesis.cancel()}
+function openModal(id){document.getElementById(id)?.classList.add('show')}
+function closeModal(id){document.getElementById(id)?.classList.remove('show')}
+document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.target.classList.remove('show')})
 </script>
+{% block scripts %}{% endblock %}
 </body></html>
