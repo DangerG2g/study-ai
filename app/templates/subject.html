@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{subject.name}} · StudyAI{% endblock %}
+{% block content %}
+<div class="breadcrumb"><a href="/">Dashboard</a><span>›</span>{{subject.name}}</div>
+<div class="page-title"><div><p class="eyebrow">SUBJECT</p><h1>{{subject.name}}</h1><p class="subtext">Organize your chapters and study material.</p></div><div class="title-actions"><button class="secondary-btn" onclick="openDialog('renameSubject')">✎ Rename</button><form action="/subjects/{{subject.id}}/delete" method="post" onsubmit="return confirm('Delete this subject and its chapters?')"><button class="danger-outline">Delete</button></form></div></div>
+<div class="section-heading"><div><h2>Chapters</h2><p>Select a chapter to view notes and PDFs.</p></div><button class="primary" onclick="openDialog('addChapter')">＋ Add chapter</button></div>
+<div class="chapter-grid">{% for c in chapters %}<a class="chapter-card" href="/chapters/{{c.id}}"><div class="chapter-number">{{loop.index}}</div><div class="chapter-info"><h3>{{c.name}}</h3><p>📝 {{c.note_count}} notes &nbsp; · &nbsp; 📄 {{c.pdf_count}} PDFs</p></div><span class="arrow">→</span></a>{% else %}<div class="empty-card"><h3>No chapters yet</h3><p>Add your first chapter to organize this subject.</p></div>{% endfor %}</div>
+<dialog id="addChapter" class="dialog"><form action="/subjects/{{subject.id}}/chapters" method="post"><button type="button" class="close" onclick="this.closest('dialog').close()">×</button><h2>Add chapter</h2><input name="name" required placeholder="e.g. Semiconductor"><button class="primary full">Add chapter</button></form></dialog>
+<dialog id="renameSubject" class="dialog"><form action="/subjects/{{subject.id}}/rename" method="post"><button type="button" class="close" onclick="this.closest('dialog').close()">×</button><h2>Rename subject</h2><input name="name" value="{{subject.name}}" required><button class="primary full">Save changes</button></form></dialog>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · StudyAI{% endblock %}
+{% block content %}
+<div class="welcome"><div><p class="eyebrow">PERSONAL STUDY WORKSPACE</p><h1>Welcome back, Student 👋</h1><p class="subtext">Organize your learning, find your material and study with less friction.</p></div><div class="welcome-art">✦</div></div>
+<div class="stats">
+<div class="stat-card"><div class="stat-icon purple">▣</div><div><span>Subjects</span><strong>{{ subjects|length }}</strong></div></div>
+<div class="stat-card"><div class="stat-icon blue">◈</div><div><span>Chapters</span><strong>{{ stats.chapters }}</strong></div></div>
+<div class="stat-card"><div class="stat-icon green">✓</div><div><span>Saved material</span><strong>{{ stats.notes + stats.pdfs }}</strong></div></div>
+</div>
+<div class="section-heading" id="subjects"><div><h2>Your subjects</h2><p>Open a subject to continue studying.</p></div><button class="primary" onclick="openDialog('addSubject')">＋ Add subject</button></div>
+<div class="subject-grid">
+{% for s in subjects %}<a class="subject-card" href="/subjects/{{s.id}}"><div class="subject-top"><span class="subject-symbol">▣</span><span class="arrow">↗</span></div><h3>{{s.name}}</h3><p>{{s.chapter_count}} chapter{% if s.chapter_count != 1 %}s{% endif %}</p><div class="progress"><span style="width:{% if s.chapter_count %}65{% else %}10{% endif %}%"></span></div><small>Continue studying</small></a>
+{% else %}<div class="empty-card"><div>▣</div><h3>No subjects yet</h3><p>Create your first subject to start organizing your study material.</p><button class="primary" onclick="openDialog('addSubject')">Create subject</button></div>{% endfor %}</div>
+<div class="section-heading"><div><h2>Quick actions</h2><p>These actions now connect to your actual study data.</p></div></div>
+<div class="quick-grid">
+<button class="quick-card quick-button" onclick="openDialog('uploadPdf')"><span>📄</span><b>Upload PDF</b><small>Add a PDF directly to a chapter.</small></button>
+<button class="quick-card quick-button" onclick="openDialog('addNote')"><span>✍</span><b>Write a note</b><small>Save an explanation or revision note.</small></button>
+<button class="quick-card quick-button" onclick="location.href='/search'"><span>🔊</span><b>Listen to notes</b><small>Find notes and use Read aloud.</small></button>
+<button class="quick-card quick-button" onclick="document.querySelector('.search input').focus()"><span>⌕</span><b>Search knowledge</b><small>Search saved notes and PDF text.</small></button>
+</div>
+{% if results %}<div class="section-heading"><div><h2>Search results</h2><p>Results for “{{query}}”</p></div></div>
+{% for n in results.notes %}<div class="result-card"><div class="result-type">NOTE · {{n.subject_name}} / {{n.chapter_name}}</div><h3>{{n.title}}</h3><p>{{n.snippet.before}}<mark>{{n.snippet.match}}</mark>{{n.snippet.after}}</p><button class="small-btn" onclick='speakText({{n.body|tojson}})'>🔊 Listen</button></div>{% endfor %}
+{% for p in results.pages %}<div class="result-card"><div class="result-type pdf">PDF · PAGE {{p.page_number}} · {{p.subject_name}} / {{p.chapter_name}}</div><h3>{{p.original_name}}</h3><p>{{p.snippet.before}}<mark>{{p.snippet.match}}</mark>{{p.snippet.after}}</p><a class="small-btn" href="/pdfs/{{p.pdf_id}}/open" target="_blank">📄 Open PDF</a></div>{% endfor %}
+{% if not results.notes and not results.pages %}<div class="empty-card">No results found.</div>{% endif %}{% endif %}
+<dialog id="addSubject" class="dialog"><form action="/subjects" method="post"><button type="button" class="close" onclick="this.closest('dialog').close()">×</button><h2>Create subject</h2><p>Give your subject a name.</p><input name="name" required placeholder="e.g. Engineering Mathematics"><button class="primary full">Create subject</button></form></dialog>
+<dialog id="uploadPdf" class="dialog wide"><form id="uploadForm" method="post" enctype="multipart/form-data" onsubmit="return checkUpload()"><button type="button" class="close" onclick="this.closest('dialog').close()">×</button><h2>Upload PDF</h2><p>Choose the chapter where this PDF should be saved.</p><select id="uploadChapter" required onchange="document.getElementById('uploadFile').disabled=!this.value"><option value="">Choose a chapter</option>{% for c in chapters %}<option value="{{c.id}}" data-subject="{{c.subject_id}}">{{c.subject_name}} · {{c.name}}</option>{% endfor %}</select><input id="uploadFile" type="file" name="file" accept="application/pdf,.pdf" required disabled><button class="primary full">Upload PDF</button>{% if not chapters %}<p class="hint">Create a subject and chapter first.</p>{% endif %}</form></dialog>
+<dialog id="addNote" class="dialog wide"><form id="noteForm" method="post" onsubmit="return checkNote()"><button type="button" class="close" onclick="this.closest('dialog').close()">×</button><h2>Create note</h2><select id="noteChapter" required><option value="">Choose a chapter</option>{% for c in chapters %}<option value="{{c.id}}" data-subject="{{c.subject_id}}">{{c.subject_name}} · {{c.name}}</option>{% endfor %}</select><input name="title" required placeholder="Note title"><textarea name="body" required placeholder="Write your explanation or revision notes..."></textarea><button class="primary full">Save note</button></form></dialog>
+<script>
+function checkUpload(){const s=document.getElementById('uploadChapter');if(!s.value)return false;document.getElementById('uploadForm').action='/chapters/'+s.value+'/pdfs';return true;}
+function checkNote(){const s=document.getElementById('noteChapter');if(!s.value)return false;document.getElementById('noteForm').action='/chapters/'+s.value+'/notes';return true;}
+</script>
+{% endblock %}
