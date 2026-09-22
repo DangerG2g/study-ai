@@ -1,23 +1,65 @@
 {% extends 'base.html' %}{% block title %}Dashboard · Study AI{% endblock %}
+{% block crumb %}Dashboard{% endblock %}
 {% block content %}
-<div class="hero">
-  <div><div class="eyebrow">YOUR STUDY HUB</div><h1>Welcome back, {{ user.username }} <span>✦</span></h1><p>Everything you learn, organised in one calm place.</p></div>
-  <div class="hero-art"><div class="float-card c1">📚 <b>Learn</b></div><div class="float-card c2">🧠 <b>Remember</b></div><div class="float-card c3">✨ <b>Focus</b></div><div class="hero-ring"></div></div>
+<div class="dash-v3">
+  <section class="dash-welcome">
+    <div class="welcome-copy">
+      <div class="eyebrow">STUDENT DASHBOARD</div>
+      <h1>Good to see you, <span>{{ user.username }}</span>.</h1>
+      <p>Your learning space is ready. Pick a subject, continue a chapter, or add new material.</p>
+      <div class="welcome-actions">
+        <button class="primary" onclick="openModal('subjectModal')">＋ Add subject</button>
+        <a class="ghost" href="/search">⌕ Search my knowledge</a>
+      </div>
+    </div>
+    <div class="learning-orbit" aria-hidden="true">
+      <div class="orbit-core"><span>✦</span></div>
+      <div class="orbit-ring r1"></div><div class="orbit-ring r2"></div><div class="orbit-ring r3"></div>
+      <div class="orbit-dot d1">📚</div><div class="orbit-dot d2">🧠</div><div class="orbit-dot d3">⚡</div>
+    </div>
+  </section>
+
+  <section class="dashboard-stats">
+    <div class="dash-stat"><div class="stat-icon purple">⌘</div><div><span>Subjects</span><strong>{{ subjects|length }}</strong><small>study areas</small></div></div>
+    <div class="dash-stat"><div class="stat-icon blue">◈</div><div><span>Chapters</span><strong>{{ stats.chapters }}</strong><small>chapters organised</small></div></div>
+    <div class="dash-stat"><div class="stat-icon green">✎</div><div><span>Notes</span><strong>{{ stats.notes }}</strong><small>ideas captured</small></div></div>
+    <div class="dash-stat"><div class="stat-icon orange">↥</div><div><span>Files</span><strong>{{ stats.pdfs }}</strong><small>study documents</small></div></div>
+  </section>
+
+  <section class="library-v3">
+    <div class="section-head v3-head">
+      <div><div class="eyebrow">YOUR LEARNING LIBRARY</div><h2>Subjects</h2><p class="section-sub">Everything is organised around the subjects you are studying.</p></div>
+      <button class="ghost" onclick="openModal('subjectModal')">＋ New subject</button>
+    </div>
+    <div class="subject-grid-v3">
+      {% for s in subjects %}
+      <a class="subject-card-v3 tone-{{ loop.index0 % 4 }}" href="/subjects/{{ s.id }}">
+        <div class="subject-card-glow"></div>
+        <div class="subject-card-top"><span class="subject-index">{{ '%02d' % loop.index }}</span><span class="subject-arrow">↗</span></div>
+        <div class="subject-big-icon">{{ ['λ','∑','⌘','◈'][loop.index0 % 4] }}</div>
+        <h3>{{ s.name }}</h3>
+        <div class="subject-meta"><span>{{ s.chapter_count }} chapter{{ '' if s.chapter_count == 1 else 's' }}</span><span>Open workspace →</span></div>
+      </a>
+      {% else %}
+      <div class="empty-card empty-v3"><div class="empty-icon">✦</div><h3>Start your study library</h3><p>Create your first subject and organise everything you learn inside it.</p><button class="primary" onclick="openModal('subjectModal')">Create first subject</button></div>
+      {% endfor %}
+      <button class="add-subject-card" onclick="openModal('subjectModal')"><span>＋</span><b>Add subject</b><small>Create another study area</small></button>
+    </div>
+  </section>
+
+  <section class="quick-v3">
+    <div class="section-head v3-head compact"><div><div class="eyebrow">QUICK ACTIONS</div><h2>What do you want to do?</h2></div></div>
+    <div class="quick-grid-v3">
+      <button onclick="openModal('subjectModal')" class="action-card ac-purple"><span class="action-symbol">＋</span><div><b>Create subject</b><small>Start a new study area</small></div><i>→</i></button>
+      <a href="/search" class="action-card ac-blue"><span class="action-symbol">⌕</span><div><b>Search knowledge</b><small>Find notes and file text</small></div><i>→</i></a>
+      <button onclick="openModal('noteHelp')" class="action-card ac-green"><span class="action-symbol">▶</span><div><b>Listen to notes</b><small>Hear your saved notes</small></div><i>→</i></button>
+      <button onclick="openModal('featureInfo')" class="action-card ac-orange"><span class="action-symbol">↥</span><div><b>Add material</b><small>PDF, Word or PowerPoint</small></div><i>→</i></button>
+    </div>
+  </section>
+
+  {% if results is not none %}<div class="section-head compact"><div><div class="eyebrow">SEARCH RESULTS</div><h2>For “{{ query }}”</h2></div></div><div class="results"><h3>Notes</h3>{% for r in results.notes %}<a href="/chapters/{{ r.chapter_id }}" class="result"><b>{{ r.title }}</b><small>{{ r.subject_name }} · {{ r.chapter_name }}</small><p>{{ r.snippet.before }}<mark>{{ r.snippet.match }}</mark>{{ r.snippet.after }}</p></a>{% else %}<p class="muted">No matching notes.</p>{% endfor %}<h3>Files</h3>{% for r in results.pages %}<a href="/pdfs/{{ r.pdf_id }}/text" class="result"><b>{{ r.original_name }}</b><small>{{ r.subject_name }} · {{ r.chapter_name }} · page {{ r.page_number }}</small><p>{{ r.snippet.before }}<mark>{{ r.snippet.match }}</mark>{{ r.snippet.after }}</p></a>{% else %}<p class="muted">No matching file text.</p>{% endfor %}</div>{% endif %}
 </div>
-<div class="stats">
-  <div class="stat"><span>SUBJECTS</span><strong>{{ subjects|length }}</strong><small>your study areas</small></div>
-  <div class="stat"><span>CHAPTERS</span><strong>{{ stats.chapters }}</strong><small>topics to explore</small></div>
-  <div class="stat"><span>NOTES</span><strong>{{ stats.notes }}</strong><small>ideas captured</small></div>
-  <div class="stat"><span>FILES</span><strong>{{ stats.pdfs }}</strong><small>PDF · Word · PowerPoint</small></div>
-</div>
-<div class="section-head"><div><div class="eyebrow">YOUR LIBRARY</div><h2>Subjects</h2></div><button class="primary" onclick="openModal('subjectModal')">＋ Add subject</button></div>
-<div class="subject-grid">
-{% for s in subjects %}<a class="subject-card" href="/subjects/{{ s.id }}"><div class="subject-icon">{{ ['∿','◈','λ','✣','◇','∑'][loop.index0 % 6] }}</div><div><h3>{{ s.name }}</h3><p>{{ s.chapter_count }} chapters</p></div><span class="arrow">→</span></a>{% else %}<div class="empty-card"><div class="empty-icon">✦</div><h3>Your study space is empty</h3><p>Create your first subject and start building your knowledge library.</p><button class="primary" onclick="openModal('subjectModal')">Create subject</button></div>{% endfor %}
-</div>
-<div class="section-head compact"><div><div class="eyebrow">QUICK ACTIONS</div><h2>Study your way</h2></div></div>
-<div class="quick-grid"><button onclick="openModal('subjectModal')" class="quick q-purple"><span>＋</span><b>New subject</b><small>Start a study area</small></button><a href="/search" class="quick q-blue"><span>⌕</span><b>Search knowledge</b><small>Find what you saved</small></a><button onclick="openModal('noteHelp')" class="quick q-green"><span>♬</span><b>Listen to notes</b><small>Read notes aloud</small></button><button onclick="openModal('featureInfo')" class="quick q-orange"><span>↥</span><b>Upload material</b><small>PDF, Word or PowerPoint</small></button></div>
-{% if results is not none %}<div class="section-head compact"><div><div class="eyebrow">SEARCH RESULTS</div><h2>For “{{ query }}”</h2></div></div><div class="results"><h3>Notes</h3>{% for r in results.notes %}<a href="/chapters/{{ r.chapter_id }}" class="result"><b>{{ r.title }}</b><small>{{ r.subject_name }} · {{ r.chapter_name }}</small><p>{{ r.snippet.before }}<mark>{{ r.snippet.match }}</mark>{{ r.snippet.after }}</p></a>{% else %}<p class="muted">No matching notes.</p>{% endfor %}<h3>Files</h3>{% for r in results.pages %}<a href="/pdfs/{{ r.pdf_id }}/text" class="result"><b>{{ r.original_name }}</b><small>{{ r.subject_name }} · {{ r.chapter_name }} · page {{ r.page_number }}</small><p>{{ r.snippet.before }}<mark>{{ r.snippet.match }}</mark>{{ r.snippet.after }}</p></a>{% else %}<p class="muted">No matching file text.</p>{% endfor %}</div>{% endif %}
-<div id="subjectModal" class="modal"><div class="modal-box"><button class="x" onclick="closeModal('subjectModal')">×</button><div class="eyebrow">NEW</div><h2>Create a subject</h2><form method="post" action="/subjects"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Subject name<input name="name" placeholder="e.g. Computer Science" required autofocus></label><button class="primary full">Create subject</button></form></div></div>
+<div id="subjectModal" class="modal"><div class="modal-box"><button class="x" onclick="closeModal('subjectModal')">×</button><div class="eyebrow">NEW STUDY AREA</div><h2>Create a subject</h2><form method="post" action="/subjects"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Subject name<input name="name" placeholder="e.g. Computer Science" required autofocus></label><button class="primary full">Create subject</button></form></div></div>
 <div id="noteHelp" class="modal"><div class="modal-box"><button class="x" onclick="closeModal('noteHelp')">×</button><h2>Listen to your notes</h2><p class="muted">Open any chapter and use the <b>Listen</b> button on a note. Your browser will read it aloud.</p><button class="primary" onclick="closeModal('noteHelp')">Got it</button></div></div>
-<div id="featureInfo" class="modal"><div class="modal-box"><button class="x" onclick="closeModal('featureInfo')">×</button><h2>Upload from a chapter</h2><p class="muted">Open a subject → chapter. The chapter page has one upload box for <b>PDF, Word (.docx), and PowerPoint (.pptx)</b>.</p><button class="primary" onclick="closeModal('featureInfo')">Got it</button></div></div>
+<div id="featureInfo" class="modal"><div class="modal-box"><button class="x" onclick="closeModal('featureInfo')">×</button><h2>Add study material</h2><p class="muted">Open a subject → chapter. The chapter page has an upload box for <b>PDF, Word (.docx), and PowerPoint (.pptx)</b>.</p><button class="primary" onclick="closeModal('featureInfo')">Got it</button></div></div>
 {% endblock %}
