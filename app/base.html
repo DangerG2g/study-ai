@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}Study AI{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="ambient" aria-hidden="true">
+  <div class="ambient-grid"></div>
+  <i></i><i></i><i></i>
+  <span class="orb orb1"></span><span class="orb orb2"></span>
+  <span class="orb orb3"></span>
+  <div class="ambient-particles"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+</div>
+<div class="app-shell">
+  <aside class="sidebar">
+    <a class="brand" href="/"><span class="brand-mark">✦</span><span>Study<span>AI</span></span></a>
+    {% if user %}
+    <nav>
+      <a href="/" class="nav-link">⌂ <span>Dashboard</span></a>
+      <a href="/search" class="nav-link">⌕ <span>Search knowledge</span></a>
+    </nav>
+    <div class="side-label">MY SPACE</div>
+    <div class="mini-note">Build your own study universe. Add subjects, chapters and learning material.</div>
+    <div class="sidebar-bottom">
+      <div class="profile-mini"><div class="avatar">{{ user.username[0]|upper }}</div><div><b>{{ user.username }}</b><small>Student</small></div></div>
+      <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="logout">↪ Log out</button></form>
+    </div>
+    {% endif %}
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <div class="crumb">{% block crumb %}Workspace{% endblock %}</div>
+      {% if user %}<form class="top-search" action="/search" method="get"><span>⌕</span><input name="q" placeholder="Search notes, PDFs, topics..." value="{{ query|default('') }}"></form><div class="top-avatar">{{ user.username[0]|upper }}</div>{% endif %}
+    </header>
+    <section class="content">{% block content %}{% endblock %}</section>
+  </main>
+</div>
+<script>
+function speakText(text){if(!('speechSynthesis' in window))return; speechSynthesis.cancel();let u=new SpeechSynthesisUtterance(text);u.rate=.96;u.pitch=1;speechSynthesis.speak(u)}
+function stopSpeaking(){if('speechSynthesis' in window)speechSynthesis.cancel()}
+(function(){
+  const bg=document.querySelector('.ambient'); if(!bg) return;
+  let tx=0,ty=0,x=0,y=0;
+  document.addEventListener('mousemove',e=>{tx=(e.clientX/innerWidth-.5)*2;ty=(e.clientY/innerHeight-.5)*2});
+  function frame(){x+=(tx-x)*.025;y+=(ty-y)*.025;bg.style.setProperty('--mx',x);bg.style.setProperty('--my',y);requestAnimationFrame(frame)}
+  frame();
+})();
+function openModal(id){document.getElementById(id)?.classList.add('show')}
+function closeModal(id){document.getElementById(id)?.classList.remove('show')}
+document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.target.classList.remove('show')})
+</script>
+{% block scripts %}{% endblock %}
+</body></html>
