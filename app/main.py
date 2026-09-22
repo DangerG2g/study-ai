@@ -192,7 +192,7 @@ def remove_subject(request: Request, subject_id: int, csrf_token: str = Form(...
 def subject(request: Request, subject_id: int):
     user=require_user(request); s=db.get_subject(user['id'],subject_id)
     if not s: raise HTTPException(404)
-    return render(request,'subject.html',{'subject':s,'chapters':db.list_chapters(user['id'],subject_id)})
+    return render(request,'subject.html',{'subject':s,'chapters':db.list_chapters(user['id'],subject_id),'notes':db.list_subject_notes(user['id'],subject_id),'pdfs':db.list_subject_pdfs(user['id'],subject_id)})
 
 @app.post('/subjects/{subject_id}/chapters')
 def create_chapter(request: Request, subject_id: int, name: str = Form(...), csrf_token: str = Form(...)):
@@ -226,8 +226,9 @@ def chapter(request: Request, chapter_id: int):
 @app.post('/chapters/{chapter_id}/notes')
 def create_note(request: Request, chapter_id: int, title: str = Form(...), body: str = Form(...), csrf_token: str = Form(...)):
     user=require_user(request); require_csrf(request,csrf_token)
-    if not db.get_chapter(user['id'],chapter_id): raise HTTPException(404)
-    if title.strip() and body.strip(): db.add_note(user['id'],chapter_id,title.strip(),body.strip())
+    c=db.get_chapter(user['id'],chapter_id)
+    if not c: raise HTTPException(404)
+    if title.strip() and body.strip(): db.add_note(user['id'],c['subject_id'],chapter_id,title.strip(),body.strip())
     return RedirectResponse(f'/chapters/{chapter_id}',303)
 
 @app.post('/notes/{note_id}/edit')
@@ -237,7 +238,7 @@ def edit_note(request: Request, note_id: int, title: str = Form(...), body: str 
     if not n: raise HTTPException(404)
     if not title.strip() or not body.strip(): raise HTTPException(400,'Title and note cannot be empty.')
     db.update_note(user['id'],note_id,title.strip(),body.strip())
-    return RedirectResponse(f'/chapters/{n["chapter_id"]}',303)
+    return RedirectResponse(f'/chapters/{n["chapter_id"]}' if n['chapter_id'] else f'/subjects/{n["subject_id"]}',303)
 
 @app.post('/notes/{note_id}/delete')
 def remove_note(request: Request, note_id: int, csrf_token: str = Form(...)):
@@ -245,24 +246,62 @@ def remove_note(request: Request, note_id: int, csrf_token: str = Form(...)):
     n=db.get_note(user['id'],note_id)
     if not n: raise HTTPException(404)
     db.delete_note(user['id'],note_id)
-    return RedirectResponse(f'/chapters/{n["chapter_id"]}',303)
+    return RedirectResponse(f'/chapters/{n["chapter_id"]}' if n['chapter_id'] else f'/subjects/{n["subject_id"]}',303)
 
-@app.post('/chapters/{chapter_id}/pdfs')
-async def upload_document(request: Request, chapter_id: int, file: UploadFile = File(...), csrf_token: str = Form(...)):
+@app.get('/add-material', response_class=HTMLResponse)
+def add_material_page(request: Request, q: str = '', type: str = 'file'):
+    user=require_user(request)
+    locations=db.search_locations(user['id'],q)
+    initial_type = 'note' if type.lower() == 'note' else 'file'
+    return render(request,'add_material.html',{'locations':locations,'query':q,'initial_type':initial_type})
+
+@app.get('/add-notes')
+def add_notes_alias(request: Request):
+    require_user(request)
+    return RedirectResponse('/add-material?type=note', status_code=303)
+
+@app.post('/materials/note')
+def create_material_note(request: Request, subject_id: int = Form(...), chapter_id: str = Form(''), title: str = Form(...), body: str = Form(...), csrf_token: str = Form(...)):
     user=require_user(request); require_csrf(request,csrf_token)
-    if not db.get_chapter(user['id'],chapter_id): raise HTTPException(404)
+    subject=db.get_subject(user['id'],subject_id)
+    if not subject: raise HTTPException(404,'Subject not found.')
+    chapter=int(chapter_id) if chapter_id.strip() else None
+    if chapter:
+        c=db.get_chapter(user['id'],chapter)
+        if not c or c['subject_id'] != subject_id: raise HTTPException(400,'Invalid chapter.')
+    if not title.strip() or not body.strip(): raise HTTPException(400,'Title and note cannot be empty.')
+    db.add_note(user['id'],subject_id,chapter,title.strip(),body.strip())
+    return RedirectResponse(f'/chapters/{chapter}' if chapter else f'/subjects/{subject_id}',303)
+
+@app.post('/materials/file')
+async def upload_material(request: Request, subject_id: int = Form(...), chapter_id: str = Form(''), file: UploadFile = File(...), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    subject=db.get_subject(user['id'],subject_id)
+    if not subject: raise HTTPException(404,'Subject not found.')
+    chapter=int(chapter_id) if chapter_id.strip() else None
+    if chapter:
+        c=db.get_chapter(user['id'],chapter)
+        if not c or c['subject_id'] != subject_id: raise HTTPException(400,'Invalid chapter.')
     name=Path(file.filename or '').name
     ext=Path(name).suffix.lower()
     allowed={'.pdf':'pdf','.docx':'docx','.pptx':'pptx'}
     if ext not in allowed: raise HTTPException(400,'Supported files: PDF, Word (.docx), and PowerPoint (.pptx).')
     data=await file.read()
-    if len(data) > 25*1024*1024: raise HTTPException(413,'File is too large. Maximum size is 25 MB.')
+    if len(data)>25*1024*1024: raise HTTPException(413,'File is too large. Maximum size is 25 MB.')
     temp=BASE_DIR/'uploads'/f'{secrets.token_hex(12)}{ext}'; temp.parent.mkdir(exist_ok=True); temp.write_bytes(data)
     try: pages=extract_document(temp)
     except Exception as e: raise HTTPException(400,f'Could not read this file: {e}')
     finally: temp.unlink(missing_ok=True)
-    db.add_pdf(user['id'],chapter_id,name,data,len(pages),[(i,t) for i,t in pages if t],allowed[ext])
-    return RedirectResponse(f'/chapters/{chapter_id}',303)
+    db.add_pdf(user['id'],subject_id,chapter,name,data,len(pages),[(i,t) for i,t in pages if t],allowed[ext])
+    return RedirectResponse(f'/chapters/{chapter}' if chapter else f'/subjects/{subject_id}',303)
+
+@app.post('/chapters/{chapter_id}/pdfs')
+async def upload_document(request: Request, chapter_id: int, file: UploadFile = File(...), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    c=db.get_chapter(user['id'],chapter_id)
+    if not c: raise HTTPException(404)
+    # Keep the old endpoint working while using the new optional-chapter storage model.
+    return await upload_material(request, subject_id=c['subject_id'], chapter_id=str(chapter_id), file=file, csrf_token=csrf_token)
 
 @app.get('/pdfs/{pdf_id}/open')
 def open_pdf(request: Request,pdf_id: int):
@@ -282,7 +321,7 @@ def remove_pdf(request: Request,pdf_id:int,csrf_token:str=Form(...)):
     p=db.get_pdf(user['id'],pdf_id)
     if not p: raise HTTPException(404)
     db.delete_pdf(user['id'],pdf_id)
-    return RedirectResponse(f'/chapters/{p["chapter_id"]}',303)
+    return RedirectResponse(f'/chapters/{p["chapter_id"]}' if p['chapter_id'] else f'/subjects/{p["subject_id"]}',303)
 
 @app.get('/search',response_class=HTMLResponse)
 def search(request: Request,q:str=''):
