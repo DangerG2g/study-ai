@@ -23,3 +23,17 @@
 @keyframes particleRise{0%,100%{transform:translateY(0) scale(.8);opacity:.15}50%{transform:translateY(-35px) scale(1.5);opacity:.7}}
 @media(prefers-reduced-motion:reduce){.ambient-grid,.ambient i,.ambient .orb,.ambient-particles span{animation:none!important}.ambient-grid{transform:none}}
 @media(max-width:700px){.ambient-grid{background-size:40px 40px}.ambient .orb3{display:none}}
+
+/* ===================== STEP 1.1: VISIBLE 3D BACKGROUND FIX ===================== */
+body{background:#050713!important;overflow-x:hidden}
+.ambient{z-index:0!important;opacity:1!important;isolation:isolate}
+.app-shell{position:relative;z-index:1;background:transparent}
+.ambient-grid{opacity:.72!important;background-size:46px 46px!important;background-image:linear-gradient(rgba(120,130,255,.10) 1px,transparent 1px),linear-gradient(90deg,rgba(90,190,255,.08) 1px,transparent 1px)!important;filter:drop-shadow(0 0 5px rgba(100,120,255,.12))}
+.ambient i{opacity:.42!important;filter:blur(45px)!important}
+.ambient .orb{border-width:2px!important;border-color:rgba(150,145,255,.22)!important;box-shadow:0 0 45px rgba(100,100,255,.12),inset 0 0 45px rgba(100,100,255,.08)!important}
+.ambient .orb1{width:560px!important;height:560px!important;right:3%!important;top:8%!important}
+.ambient .orb2{width:760px!important;height:760px!important;left:-28%!important;bottom:-45%!important}
+.ambient .orb3{width:320px!important;height:320px!important;right:35%!important;top:38%!important;border-color:rgba(80,205,255,.18)!important}
+.ambient .orb3:before,.ambient .orb3:after{content:"";position:absolute;border:1px solid rgba(255,255,255,.10);border-radius:50%;inset:28px}.ambient .orb3:after{inset:72px;border-color:rgba(120,110,255,.16)}
+.ambient-particles span{width:5px!important;height:5px!important;background:rgba(150,220,255,.75)!important;box-shadow:0 0 18px rgba(110,190,255,.75)!important}
+@media(max-width:700px){.ambient-grid{opacity:.45!important}.ambient .orb1{width:380px!important;height:380px!important;right:-160px!important}.ambient .orb2{width:500px!important;height:500px!important;left:-260px!important}.ambient .orb3{display:none!important}}
