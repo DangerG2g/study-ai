@@ -52,8 +52,8 @@
     <div class="quick-grid-v3">
       <button onclick="openModal('subjectModal')" class="action-card ac-purple"><span class="action-symbol">＋</span><div><b>Create subject</b><small>Start a new study area</small></div><i>→</i></button>
       <a href="/search" class="action-card ac-blue"><span class="action-symbol">⌕</span><div><b>Search knowledge</b><small>Find notes and file text</small></div><i>→</i></a>
-      <a href="/add-material" class="action-card ac-green"><span class="action-symbol">📝</span><div><b>Write a note</b><small>Save directly to a location</small></div><i>→</i></a>
-      <a href="/add-material" class="action-card ac-orange"><span class="action-symbol">↥</span><div><b>Add material</b><small>Choose a subject or chapter</small></div><i>→</i></a>
+      <a href="/add-material?type=note" class="action-card ac-green"><span class="action-symbol">📝</span><div><b>Write a note</b><small>Save directly to a location</small></div><i>→</i></a>
+      <a href="/add-material?type=file" class="action-card ac-orange"><span class="action-symbol">↥</span><div><b>Add material</b><small>Choose a subject or chapter</small></div><i>→</i></a>
     </div>
   </section>
 
@@ -61,5 +61,5 @@
 </div>
 <div id="subjectModal" class="modal"><div class="modal-box"><button class="x" onclick="closeModal('subjectModal')">×</button><div class="eyebrow">NEW STUDY AREA</div><h2>Create a subject</h2><form method="post" action="/subjects"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Subject name<input name="name" placeholder="e.g. Computer Science" required autofocus></label><button class="primary full">Create subject</button></form></div></div>
 <div id="noteHelp" class="modal"><div class="modal-box"><button class="x" onclick="closeModal('noteHelp')">×</button><h2>Listen to your notes</h2><p class="muted">Open any chapter and use the <b>Listen</b> button on a note. Your browser will read it aloud.</p><button class="primary" onclick="closeModal('noteHelp')">Got it</button></div></div>
-<div id="featureInfo" class="modal"><div class="modal-box"><button class="x" onclick="closeModal('featureInfo')">×</button><h2>Add study material</h2><p class="muted">Open a subject → chapter. The chapter page has an upload box for <b>PDF, Word (.docx), and PowerPoint (.pptx)</b>.</p><button class="primary" onclick="closeModal('featureInfo')">Got it</button></div></div>
+<div id="featureInfo" class="modal"><div class="modal-box"><button class="x" onclick="closeModal('featureInfo')">×</button><h2>Add study material</h2><p class="muted">Use <b>Add Material</b> to choose a subject or chapter, then add a note or upload a <b>PDF, Word (.docx), or PowerPoint (.pptx)</b>.</p><button class="primary" onclick="closeModal('featureInfo')">Got it</button></div></div>
 {% endblock %}

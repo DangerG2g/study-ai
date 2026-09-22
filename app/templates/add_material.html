@@ -10,6 +10,7 @@
     <div class="eyebrow">STEP 1</div><h2>Where should it go?</h2>
     <p class="muted">Search your subjects and chapters, then select one location.</p>
     <form class="location-search" method="get" action="/add-material">
+      <input type="hidden" name="type" value="{{ initial_type }}">
       <input name="q" value="{{ query }}" placeholder="Search subject or chapter..." autocomplete="off">
       <button class="ghost" type="submit">Search</button>
     </form>
@@ -36,11 +37,11 @@
   <section class="panel material-actions-panel">
     <div class="eyebrow">STEP 2</div><h2>What are you adding?</h2>
     <div class="material-type-grid">
-      <button type="button" class="material-type active" data-tab="fileTab"><span>📎</span><b>File</b><small>PDF, Word, PowerPoint</small></button>
-      <button type="button" class="material-type" data-tab="noteTab"><span>📝</span><b>Note</b><small>Write and save a note</small></button>
+      <button type="button" class="material-type{% if initial_type == 'file' %} active{% endif %}" data-tab="fileTab"><span>📎</span><b>File</b><small>PDF, Word, PowerPoint</small></button>
+      <button type="button" class="material-type{% if initial_type == 'note' %} active{% endif %}" data-tab="noteTab"><span>📝</span><b>Note</b><small>Write and save a note</small></button>
     </div>
 
-    <div id="fileTab" class="material-tab">
+    <div id="fileTab" class="material-tab"{% if initial_type == 'note' %} hidden{% endif %}>
       <form id="fileForm" method="post" action="/materials/file" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subject_id" class="chosen-subject"><input type="hidden" name="chapter_id" class="chosen-chapter">
         <label class="dropzone"><input type="file" name="file" accept=".pdf,.docx,.pptx" required><span class="drop-icon">↥</span><b>Choose a file</b><small>PDF · DOCX · PPTX · up to 25 MB</small></label>
@@ -48,7 +49,7 @@
       </form>
     </div>
 
-    <div id="noteTab" class="material-tab" hidden>
+    <div id="noteTab" class="material-tab"{% if initial_type != 'note' %} hidden{% endif %}>
       <form id="noteForm" method="post" action="/materials/note">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subject_id" class="chosen-subject"><input type="hidden" name="chapter_id" class="chosen-chapter">
         <label>Note title<input name="title" placeholder="e.g. Important formulas" required></label>
@@ -74,6 +75,14 @@ radios.forEach(r=>r.addEventListener('change',()=>{
 document.querySelectorAll('.material-type').forEach(btn=>btn.addEventListener('click',()=>{
   document.querySelectorAll('.material-type').forEach(x=>x.classList.remove('active'));btn.classList.add('active');
   document.querySelectorAll('.material-tab').forEach(x=>x.hidden=true);document.getElementById(btn.dataset.tab).hidden=false;
+}));
+
+['fileForm','noteForm'].forEach(id=>document.getElementById(id)?.addEventListener('submit',e=>{
+  if(!document.querySelector('input[name="location"]:checked')){
+    e.preventDefault();
+    selected.textContent='Please choose a subject or chapter first';
+    selected.classList.add('error');
+  }
 }));
 </script>
 {% endblock %}

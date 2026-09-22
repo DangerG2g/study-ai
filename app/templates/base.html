@@ -6,7 +6,13 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div class="ambient"><i></i><i></i><i></i><span class="orb orb1"></span><span class="orb orb2"></span></div>
+<div class="ambient" aria-hidden="true">
+  <div class="ambient-grid"></div>
+  <i></i><i></i><i></i>
+  <span class="orb orb1"></span><span class="orb orb2"></span>
+  <span class="orb orb3"></span>
+  <div class="ambient-particles"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+</div>
 <div class="app-shell">
   <aside class="sidebar">
     <a class="brand" href="/"><span class="brand-mark">✦</span><span>Study<span>AI</span></span></a>
@@ -34,6 +40,13 @@
 <script>
 function speakText(text){if(!('speechSynthesis' in window))return; speechSynthesis.cancel();let u=new SpeechSynthesisUtterance(text);u.rate=.96;u.pitch=1;speechSynthesis.speak(u)}
 function stopSpeaking(){if('speechSynthesis' in window)speechSynthesis.cancel()}
+(function(){
+  const bg=document.querySelector('.ambient'); if(!bg) return;
+  let tx=0,ty=0,x=0,y=0;
+  document.addEventListener('mousemove',e=>{tx=(e.clientX/innerWidth-.5)*2;ty=(e.clientY/innerHeight-.5)*2});
+  function frame(){x+=(tx-x)*.025;y+=(ty-y)*.025;bg.style.setProperty('--mx',x);bg.style.setProperty('--my',y);requestAnimationFrame(frame)}
+  frame();
+})();
 function openModal(id){document.getElementById(id)?.classList.add('show')}
 function closeModal(id){document.getElementById(id)?.classList.remove('show')}
 document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.target.classList.remove('show')})
