@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block title %}Add Material · Study AI{% endblock %}
+{% block crumb %}<a href="/">Dashboard</a> / Add Material{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><a class="back" href="/">← Dashboard</a><div class="eyebrow">QUICK ADD</div><h1>Add material</h1><p>Choose a subject or chapter. A chapter is optional.</p></div>
+</div>
+<div class="material-layout">
+  <section class="panel material-location-panel">
+    <div class="eyebrow">STEP 1</div><h2>Where should it go?</h2>
+    <p class="muted">Search your subjects and chapters, then select one location.</p>
+    <form class="location-search" method="get" action="/add-material">
+      <input name="q" value="{{ query }}" placeholder="Search subject or chapter..." autocomplete="off">
+      <button class="ghost" type="submit">Search</button>
+    </form>
+    <div class="location-list">
+      {% if locations.subjects %}<div class="location-label">SUBJECTS</div>{% endif %}
+      {% for s in locations.subjects %}
+      <label class="location-option">
+        <input type="radio" name="location" value="subject:{{ s.id }}" data-subject="{{ s.id }}" data-chapter="">
+        <span class="location-icon">📚</span><span><b>{{ s.name }}</b><small>Save directly in this subject</small></span><span class="location-check">✓</span>
+      </label>
+      {% endfor %}
+      {% if locations.chapters %}<div class="location-label">CHAPTERS</div>{% endif %}
+      {% for c in locations.chapters %}
+      <label class="location-option">
+        <input type="radio" name="location" value="chapter:{{ c.id }}" data-subject="{{ c.subject_id }}" data-chapter="{{ c.id }}">
+        <span class="location-icon">📖</span><span><b>{{ c.name }}</b><small>{{ c.subject_name }}</small></span><span class="location-check">✓</span>
+      </label>
+      {% endfor %}
+      {% if not locations.subjects and not locations.chapters %}<div class="empty-card compact-empty"><h3>No matching locations</h3><p>Create a subject first, then come back here.</p><a class="primary" href="/">Create subject</a></div>{% endif %}
+    </div>
+    <div class="location-tip"><b>💡 Tip</b><span>You can store material directly in a subject. You only need a chapter when you want more organization.</span></div>
+  </section>
+
+  <section class="panel material-actions-panel">
+    <div class="eyebrow">STEP 2</div><h2>What are you adding?</h2>
+    <div class="material-type-grid">
+      <button type="button" class="material-type active" data-tab="fileTab"><span>📎</span><b>File</b><small>PDF, Word, PowerPoint</small></button>
+      <button type="button" class="material-type" data-tab="noteTab"><span>📝</span><b>Note</b><small>Write and save a note</small></button>
+    </div>
+
+    <div id="fileTab" class="material-tab">
+      <form id="fileForm" method="post" action="/materials/file" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subject_id" class="chosen-subject"><input type="hidden" name="chapter_id" class="chosen-chapter">
+        <label class="dropzone"><input type="file" name="file" accept=".pdf,.docx,.pptx" required><span class="drop-icon">↥</span><b>Choose a file</b><small>PDF · DOCX · PPTX · up to 25 MB</small></label>
+        <button class="primary full" type="submit">Upload material</button>
+      </form>
+    </div>
+
+    <div id="noteTab" class="material-tab" hidden>
+      <form id="noteForm" method="post" action="/materials/note">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subject_id" class="chosen-subject"><input type="hidden" name="chapter_id" class="chosen-chapter">
+        <label>Note title<input name="title" placeholder="e.g. Important formulas" required></label>
+        <label>Note<textarea name="body" rows="10" placeholder="Write your note, summary or idea..." required></textarea></label>
+        <button class="primary full" type="submit">Save note</button>
+      </form>
+    </div>
+
+    <div class="selected-location"><span>Selected location</span><b id="selectedLocation">Choose a subject or chapter</b></div>
+  </section>
+</div>
+
+<script>
+const selected=document.getElementById('selectedLocation');
+const radios=document.querySelectorAll('input[name="location"]');
+radios.forEach(r=>r.addEventListener('change',()=>{
+  document.querySelectorAll('.chosen-subject').forEach(x=>x.value=r.dataset.subject);
+  document.querySelectorAll('.chosen-chapter').forEach(x=>x.value=r.dataset.chapter);
+  const label=r.closest('.location-option').querySelector('b').textContent;
+  const sub=r.closest('.location-option').querySelector('small').textContent;
+  selected.textContent=r.dataset.chapter ? label+' · '+sub : label+' · direct';
+}));
+document.querySelectorAll('.material-type').forEach(btn=>btn.addEventListener('click',()=>{
+  document.querySelectorAll('.material-type').forEach(x=>x.classList.remove('active'));btn.classList.add('active');
+  document.querySelectorAll('.material-tab').forEach(x=>x.hidden=true);document.getElementById(btn.dataset.tab).hidden=false;
+}));
+</script>
+{% endblock %}
