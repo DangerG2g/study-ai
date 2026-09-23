@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Ask My Notes · Study AI{% endblock %}
+{% block crumb %}AI Study Assistant{% endblock %}
+{% block content %}
+<div class="page-head assistant-head">
+  <div>
+    <div class="eyebrow">STUDY AI</div>
+    <h1>Ask My Notes</h1>
+    <p>Ask questions about your own notes and uploaded documents.</p>
+  </div>
+</div>
+<div class="assistant-shell">
+  <section class="assistant-card">
+    <div class="assistant-icon">✦</div>
+    <h2>What do you want to understand?</h2>
+    <p class="muted">Try: “Explain photosynthesis in simple words” or “What are the key points of this chapter?”</p>
+    <form method="post" action="/assistant/ask" class="assistant-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <textarea name="question" rows="4" placeholder="Ask a question from my study material...">{{ question|default('') }}</textarea>
+      <button class="primary" type="submit">Ask Study AI ✦</button>
+    </form>
+    {% if not ai_enabled %}
+      <div class="assistant-notice">AI generation is not connected yet. The page will still find relevant material. Add <code>OPENAI_API_KEY</code> in Render later to enable generated answers.</div>
+    {% endif %}
+  </section>
+  {% if answer %}
+  <section class="assistant-answer">
+    <div class="answer-top"><span class="note-tag">ANSWER</span><span class="muted">Based on your library</span></div>
+    <div class="answer-body">{{ answer }}</div>
+  </section>
+  {% endif %}
+  {% if sources %}
+  <section class="assistant-sources">
+    <div class="section-head"><div><div class="eyebrow">CONTEXT</div><h2>Sources used</h2></div></div>
+    <div class="source-list">
+      {% for source in sources[:10] %}
+      <div class="source-item">
+        <span class="source-num">{{ loop.index }}</span>
+        <div><b>{{ source.title }}{% if source.page %} · page {{ source.page }}{% endif %}</b><small>{{ source.subject }}{% if source.chapter %} → {{ source.chapter }}{% endif %} · {{ source.type|upper }}</small></div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
