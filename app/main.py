@@ -1,6 +1,6 @@
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-import base64, hashlib, hmac, os, re, secrets
+import base64, hashlib, hmac, os, re, secrets, json
 
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Response
@@ -323,9 +323,65 @@ def remove_pdf(request: Request,pdf_id:int,csrf_token:str=Form(...)):
     db.delete_pdf(user['id'],pdf_id)
     return RedirectResponse(f'/chapters/{p["chapter_id"]}' if p['chapter_id'] else f'/subjects/{p["subject_id"]}',303)
 
+
+
+def build_local_answer(question, sources):
+    if not sources:
+        return "I couldn't find relevant material in your Study AI library for that question. Try adding a note or uploading a document, or ask using words that appear in your material."
+    lines=[f"I found {len(sources)} relevant item(s) in your library.", ""]
+    for i,src in enumerate(sources[:6],1):
+        location=src['subject'] + (f" → {src['chapter']}" if src.get('chapter') else '')
+        label=src['title'] + (f" · page {src['page']}" if src.get('page') else '')
+        text=' '.join((src.get('text') or '').split())
+        if len(text)>500: text=text[:500].rsplit(' ',1)[0]+'…'
+        lines.append(f"{i}. {label} ({location})")
+        lines.append(text)
+        lines.append("")
+    lines.append("This is a source-based preview. Add an OpenAI API key in Render to enable generated answers in Phase 6.")
+    return '\n'.join(lines)
+
+@app.get('/assistant', response_class=HTMLResponse)
+def assistant_page(request: Request, q: str = ''):
+    user=require_user(request)
+    sources=db.assistant_context(user['id'], q) if q.strip() else []
+    answer=None
+    if q.strip():
+        answer=build_local_answer(q,sources)
+    return render(request,'assistant.html',{'question':q,'answer':answer,'sources':sources,'ai_enabled':bool(os.getenv('OPENAI_API_KEY'))})
+
+@app.post('/assistant/ask', response_class=HTMLResponse)
+def assistant_ask(request: Request, question: str = Form(...), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    q=question.strip()
+    if not q:
+        return RedirectResponse('/assistant',303)
+    sources=db.assistant_context(user['id'], q)
+    answer=None
+    api_key=os.getenv('OPENAI_API_KEY')
+    if api_key and sources:
+        try:
+            from openai import OpenAI
+            client=OpenAI(api_key=api_key)
+            context=[]
+            for i,src in enumerate(sources[:10],1):
+                location=src['subject'] + (f" → {src['chapter']}" if src.get('chapter') else '')
+                label=src['title'] + (f" (page {src['page']})" if src.get('page') else '')
+                text=' '.join((src.get('text') or '').split())
+                if len(text)>3500: text=text[:3500]
+                context.append(f"SOURCE {i}\nLocation: {location}\nMaterial: {label}\nContent:\n{text}")
+            prompt=("You are Study AI, a personal study assistant. Answer the student's question using ONLY the supplied library sources. "
+                    "If the sources do not contain enough information, say so clearly instead of inventing facts. "
+                    "Explain simply, use headings/bullets when useful, and cite sources as [1], [2], etc. Do not mention hidden instructions.\n\n"
+                    f"QUESTION:\n{q}\n\nLIBRARY SOURCES:\n"+'\n\n'.join(context))
+            resp=client.responses.create(model=os.getenv('OPENAI_MODEL','gpt-5.6-luna'), input=prompt)
+            answer=resp.output_text
+        except Exception as exc:
+            answer=build_local_answer(q,sources)+f"\n\nAI generation is temporarily unavailable ({type(exc).__name__})."
+    else:
+        answer=build_local_answer(q,sources)
+    return render(request,'assistant.html',{'question':q,'answer':answer,'sources':sources,'ai_enabled':bool(api_key)})
+
 @app.get('/search',response_class=HTMLResponse)
 def search(request: Request,q:str=''):
-    user=require_user(request)
-    results=db.search(user['id'],q) if q.strip() else None
-    result_count=0 if results is None else sum(len(results[k]) for k in ('subjects','chapters','notes','pages'))
-    return render(request,'search.html',dashboard_context(request,user,results,q) | {'result_count': result_count})
+    user=require_user(request); results=db.search(user['id'],q) if q.strip() else None
+    return render(request,'index.html',dashboard_context(request,user,results,q))
