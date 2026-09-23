@@ -325,5 +325,7 @@ def remove_pdf(request: Request,pdf_id:int,csrf_token:str=Form(...)):
 
 @app.get('/search',response_class=HTMLResponse)
 def search(request: Request,q:str=''):
-    user=require_user(request); results=db.search(user['id'],q) if q.strip() else None
-    return render(request,'index.html',dashboard_context(request,user,results,q))
+    user=require_user(request)
+    results=db.search(user['id'],q) if q.strip() else None
+    result_count=0 if results is None else sum(len(results[k]) for k in ('subjects','chapters','notes','pages'))
+    return render(request,'search.html',dashboard_context(request,user,results,q) | {'result_count': result_count})

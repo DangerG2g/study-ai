@@ -266,20 +266,31 @@ def make_snippet(text, word, width=70):
 
 
 def search(user_id, query, limit=50):
-    words=query.split()[:6]
-    if not words: return {'notes':[],'pages':[],'subjects':[],'chapters':[]}
-    patterns=[f'%{w}%' for w in words]
+    words=[w.strip() for w in query.split() if w.strip()][:6]
+    if not words:
+        return {'notes':[],'pages':[],'subjects':[],'chapters':[]}
+    patterns=[f'%{w.replace("%", "\\%").replace("_", "\\_")}%' for w in words]
     note_where=' AND '.join('(n.title ILIKE %s OR n.body ILIKE %s)' for _ in words)
     note_params=[p for p in patterns for _ in range(2)]
     page_where=' AND '.join('pg.text ILIKE %s' for _ in words)
+    subject_where=' AND '.join('s.name ILIKE %s' for _ in words)
+    chapter_where=' AND '.join('(c.name ILIKE %s OR s.name ILIKE %s)' for _ in words)
+    chapter_params=[p for p in patterns for _ in range(2)]
     with connect() as conn:
-        subject_rows=conn.execute('SELECT id,name FROM subjects WHERE user_id=%s AND name ILIKE %s ORDER BY name LIMIT %s',(user_id,patterns[0],limit)).fetchall()
-        chapter_rows=conn.execute('SELECT c.id,c.name,c.subject_id,s.name AS subject_name FROM chapters c JOIN subjects s ON s.id=c.subject_id WHERE c.user_id=%s AND s.user_id=%s AND (c.name ILIKE %s OR s.name ILIKE %s) ORDER BY s.name,c.name LIMIT %s',(user_id,user_id,patterns[0],patterns[0],limit)).fetchall()
-        notes_rows=conn.execute(f'''SELECT n.id,n.title,n.body,n.subject_id,n.chapter_id,c.name AS chapter_name,s.name AS subject_name FROM notes n JOIN subjects s ON s.id=n.subject_id LEFT JOIN chapters c ON c.id=n.chapter_id WHERE n.user_id=%s AND s.user_id=%s AND {note_where} ORDER BY n.id DESC LIMIT %s''', [user_id,user_id,*note_params,limit]).fetchall()
-        page_rows=conn.execute(f'''SELECT pg.page_number,pg.text,p.id AS pdf_id,p.original_name,p.subject_id,p.chapter_id,c.name AS chapter_name,s.name AS subject_name FROM pdf_pages pg JOIN pdf_files p ON p.id=pg.pdf_id JOIN subjects s ON s.id=p.subject_id LEFT JOIN chapters c ON c.id=p.chapter_id WHERE pg.user_id=%s AND p.user_id=%s AND s.user_id=%s AND {page_where} ORDER BY p.id DESC,pg.page_number LIMIT %s''', [user_id,user_id,user_id,*patterns,limit]).fetchall()
+        subject_rows=conn.execute(
+            f'SELECT s.id,s.name FROM subjects s WHERE s.user_id=%s AND {subject_where} ORDER BY s.name COLLATE "C" LIMIT %s',
+            [user_id,*patterns,limit]).fetchall()
+        chapter_rows=conn.execute(
+            f'SELECT c.id,c.name,c.subject_id,s.name AS subject_name FROM chapters c JOIN subjects s ON s.id=c.subject_id WHERE c.user_id=%s AND s.user_id=%s AND {chapter_where} ORDER BY s.name COLLATE "C",c.name COLLATE "C" LIMIT %s',
+            [user_id,user_id,*chapter_params,limit]).fetchall()
+        notes_rows=conn.execute(
+            f'SELECT n.id,n.title,n.body,n.subject_id,n.chapter_id,c.name AS chapter_name,s.name AS subject_name FROM notes n JOIN subjects s ON s.id=n.subject_id LEFT JOIN chapters c ON c.id=n.chapter_id WHERE n.user_id=%s AND s.user_id=%s AND {note_where} ORDER BY n.id DESC LIMIT %s',
+            [user_id,user_id,*note_params,limit]).fetchall()
+        page_rows=conn.execute(
+            f'SELECT pg.page_number,pg.text,p.id AS pdf_id,p.original_name,p.file_type,p.subject_id,p.chapter_id,c.name AS chapter_name,s.name AS subject_name FROM pdf_pages pg JOIN pdf_files p ON p.id=pg.pdf_id JOIN subjects s ON s.id=p.subject_id LEFT JOIN chapters c ON c.id=p.chapter_id WHERE pg.user_id=%s AND p.user_id=%s AND s.user_id=%s AND {page_where} ORDER BY p.id DESC,pg.page_number LIMIT %s',
+            [user_id,user_id,user_id,*patterns,limit]).fetchall()
     first=words[0]
     return {'subjects':subject_rows,'chapters':chapter_rows,'notes':[dict(r,snippet=make_snippet(r['body'],first)) for r in notes_rows], 'pages':[dict(r,snippet=make_snippet(r['text'],first)) for r in page_rows]}
-
 
 def search_locations(user_id, query='', limit=30):
     q=(query or '').strip()
