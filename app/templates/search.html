@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block title %}Search Knowledge · Study AI{% endblock %}
+{% block crumb %}Search knowledge{% endblock %}
+{% block content %}
+<div class="search-page">
+  <section class="search-hero">
+    <div class="eyebrow">KNOWLEDGE NAVIGATION</div>
+    <h1>Search your knowledge</h1>
+    <p>Find subjects, chapters, notes and text inside your uploaded documents.</p>
+    <form class="big-search" action="/search" method="get">
+      <span>⌕</span><input id="searchInput" name="q" value="{{ query|default('') }}" placeholder="Try “Newton”, “Python”, “unit 2”..." autocomplete="off"><button class="primary" type="submit">Search</button>
+    </form>
+    <div id="recentSearches" class="recent-searches" hidden></div>
+  </section>
+
+  {% if results is not none %}
+    <section class="search-toolbar">
+      <div><b>{{ result_count }}</b> result{{ '' if result_count == 1 else 's' }}{% if query %} for <strong>“{{ query }}”</strong>{% endif %}</div>
+      <div class="search-filters" role="tablist">
+        <button class="filter active" data-filter="all">All</button>
+        <button class="filter" data-filter="location">Subjects & Chapters</button>
+        <button class="filter" data-filter="note">Notes</button>
+        <button class="filter" data-filter="file">Files</button>
+      </div>
+    </section>
+
+    {% if result_count == 0 %}
+      <div class="search-empty"><div class="empty-icon">⌕</div><h2>No matches found</h2><p>Try a subject name, chapter title, note title, or a phrase from a PDF, DOCX or PPTX.</p></div>
+    {% else %}
+      <div class="search-results-list">
+        {% for r in results.subjects %}
+        <article class="search-result phase5-result" data-kind="location">
+          <div class="result-icon">📚</div><div class="result-main"><span class="result-type">SUBJECT</span><h3>{{ r.name }}</h3><p>Open this subject and see its chapters and direct materials.</p></div><a class="result-go" href="/subjects/{{ r.id }}">Go to subject →</a>
+        </article>
+        {% endfor %}
+        {% for r in results.chapters %}
+        <article class="search-result phase5-result" data-kind="location">
+          <div class="result-icon">📖</div><div class="result-main"><span class="result-type">CHAPTER · {{ r.subject_name }}</span><h3>{{ r.name }}</h3><p>Open this chapter inside <b>{{ r.subject_name }}</b>.</p></div><a class="result-go" href="/chapters/{{ r.id }}">Go to chapter →</a>
+        </article>
+        {% endfor %}
+        {% for r in results.notes %}
+        <article class="search-result phase5-result" data-kind="note">
+          <div class="result-icon">📝</div><div class="result-main"><span class="result-type">NOTE · {{ r.subject_name }}{% if r.chapter_name %} · {{ r.chapter_name }}{% endif %}</span><h3>{{ r.title }}</h3><p>{{ r.snippet.before }}<mark>{{ r.snippet.match }}</mark>{{ r.snippet.after }}</p></div><a class="result-go" href="{% if r.chapter_id %}/chapters/{{ r.chapter_id }}{% else %}/subjects/{{ r.subject_id }}{% endif %}">Go to location →</a>
+        </article>
+        {% endfor %}
+        {% for r in results.pages %}
+        <article class="search-result phase5-result" data-kind="file">
+          <div class="result-icon">📄</div><div class="result-main"><span class="result-type">{{ r.file_type|upper }} · {{ r.subject_name }}{% if r.chapter_name %} · {{ r.chapter_name }}{% endif %} · page {{ r.page_number }}</span><h3>{{ r.original_name }}</h3><p>{{ r.snippet.before }}<mark>{{ r.snippet.match }}</mark>{{ r.snippet.after }}</p></div><div class="result-actions"><a class="result-go" href="/pdfs/{{ r.pdf_id }}/text">Read text →</a><a class="result-location" href="{% if r.chapter_id %}/chapters/{{ r.chapter_id }}{% else %}/subjects/{{ r.subject_id }}{% endif %}">Location</a></div>
+        </article>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="search-start-grid">
+      <div class="search-tip"><span>⌕</span><div><b>Search everything</b><p>One search covers your subjects, chapters, notes and extracted text from uploaded files.</p></div></div>
+      <div class="search-tip"><span>↗</span><div><b>Jump directly</b><p>Every result tells you where it lives, so you can open the exact Subject or Chapter.</p></div></div>
+      <div class="search-tip"><span>✦</span><div><b>AI-ready foundation</b><p>This search index is the foundation for the AI Study Assistant in Phase 6.</p></div></div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const input=document.getElementById('searchInput');
+  const recent=document.getElementById('recentSearches');
+  const form=input?.closest('form');
+  const key='studyai_recent_searches';
+  function get(){try{return JSON.parse(localStorage.getItem(key)||'[]')}catch(e){return []}}
+  function save(q){q=q.trim();if(!q)return;let a=get().filter(x=>x.toLowerCase()!==q.toLowerCase());a.unshift(q);localStorage.setItem(key,JSON.stringify(a.slice(0,6)))}
+  function draw(){if(!recent)return;let a=get();if(!a.length){recent.hidden=true;return}recent.hidden=false;recent.innerHTML='<span>Recent</span>'+a.map(q=>'<a href="/search?q='+encodeURIComponent(q)+'">'+q.replace(/</g,'&lt;')+'</a>').join('')}
+  form?.addEventListener('submit',()=>save(input.value)); draw();
+  document.querySelectorAll('.filter').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(b=>b.classList.remove('active'));btn.classList.add('active');const f=btn.dataset.filter;document.querySelectorAll('.phase5-result').forEach(card=>card.hidden=f!=='all'&&card.dataset.kind!==f)}));
+})();
+</script>
+{% endblock %}
