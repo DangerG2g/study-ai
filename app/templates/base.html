@@ -34,7 +34,7 @@
   <main class="main">
     <header class="topbar">
       <div class="crumb">{% block crumb %}Workspace{% endblock %}</div>
-      {% if user %}<form class="top-search" action="/search" method="get"><span>⌕</span><input id="globalSearchInput" name="q" placeholder="Search notes, PDFs, topics..." value="{{ query|default('') }}"><button type="button" class="voice-search-btn" id="voiceSearchBtn" title="Search by voice" aria-label="Search by voice">🎙</button></form><div class="top-avatar">{{ user.username[0]|upper }}</div>{% endif %}
+      {% if user %}<form class="top-search" action="/search" method="get"><span>⌕</span><input id="globalSearchInput" name="q" placeholder="Search notes, PDFs, topics..." value="{{ query|default('') }}"><button type="button" class="voice-search-btn" id="voiceSearchBtn" title="Search by voice" aria-label="Search by voice"><span>🎙</span><i></i></button></form><div class="voice-search-status" id="voiceSearchStatus" aria-live="polite"></div><div class="top-avatar">{{ user.username[0]|upper }}</div>{% endif %}
     </header>
     <section class="content">{% block content %}{% endblock %}</section>
   </main>
@@ -55,15 +55,14 @@ document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.
 </script>
 <script>
 (function(){
-  const btn=document.getElementById('voiceSearchBtn'), input=document.getElementById('globalSearchInput');
-  if(!btn||!input) return;
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){btn.title='Voice search is not supported in this browser';btn.style.opacity='.45';return;}
-  const r=new SR(); r.lang=navigator.language||'en-IN'; r.interimResults=false; r.maxAlternatives=1;
-  r.onstart=()=>{btn.classList.add('recording');btn.textContent='●';};
-  r.onend=()=>{btn.classList.remove('recording');btn.textContent='🎙';};
-  r.onerror=()=>{btn.classList.remove('recording');btn.textContent='🎙';};
-  r.onresult=e=>{const t=e.results[0][0].transcript.trim();if(t){input.value=t;input.form.submit();}};
+  const btn=document.getElementById('voiceSearchBtn'), input=document.getElementById('globalSearchInput'), status=document.getElementById('voiceSearchStatus');
+  if(!btn||!input)return; const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){btn.classList.add('unsupported');btn.title='Voice search is not supported in this browser';return;}
+  const r=new SR(); r.lang=navigator.language||'en-IN'; r.interimResults=true; r.maxAlternatives=1;
+  r.onstart=()=>{btn.classList.add('recording');btn.querySelector('span').textContent='●';if(status)status.textContent='Listening…';};
+  r.onend=()=>{btn.classList.remove('recording');btn.querySelector('span').textContent='🎙';if(status)setTimeout(()=>status.textContent='',1500);};
+  r.onerror=e=>{btn.classList.remove('recording');btn.querySelector('span').textContent='🎙';if(status)status.textContent=e.error==='not-allowed'?'Microphone permission denied':'Voice search stopped';};
+  r.onresult=e=>{let text='';for(let i=e.resultIndex;i<e.results.length;i++)text+=e.results[i][0].transcript;if(text){input.value=text.trim();if(status)status.textContent='Searching…';}};
   btn.addEventListener('click',()=>{try{r.start()}catch(e){}});
 })();
 </script>
