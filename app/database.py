@@ -285,15 +285,25 @@ def get_audio_note(user_id, audio_id):
     with connect() as conn:
         return conn.execute('SELECT * FROM audio_notes WHERE id=%s AND user_id=%s', (audio_id,user_id)).fetchone()
 
-def make_snippet(text, word, width=70):
-    flat=' '.join(text.split()); pos=flat.lower().find(word.lower())
-    if pos == -1: return {'before':flat[:width*2],'match':'','after':''}
-    start=max(0,pos-width); end=min(len(flat),pos+len(word)+width)
-    return {'before':('…' if start else '')+flat[start:pos],'match':flat[pos:pos+len(word)],'after':flat[pos+len(word):end]+('…' if end<len(flat) else '')}
+def make_snippet(text, words, width=110):
+    flat=' '.join((text or '').split())
+    if isinstance(words, str):
+        words=[words]
+    words=[w for w in words if w]
+    if not flat or not words:
+        return {'before':flat[:width*2],'match':'','after':''}
+    lower=flat.lower()
+    positions=[lower.find(w.lower()) for w in words if lower.find(w.lower()) >= 0]
+    pos=min(positions) if positions else -1
+    if pos == -1:
+        return {'before':flat[:width*2],'match':'','after':''}
+    matched=next((w for w in words if lower.find(w.lower()) == pos), words[0])
+    start=max(0,pos-width); end=min(len(flat),pos+len(matched)+width)
+    return {'before':('…' if start else '')+flat[start:pos], 'match':flat[pos:pos+len(matched)], 'after':flat[pos+len(matched):end]+('…' if end<len(flat) else '')}
 
 
 def search(user_id, query, limit=50):
-    words=[w.strip() for w in query.split() if w.strip()][:6]
+    words=[w.strip() for w in query.split() if w.strip()][:8]
     if not words:
         return {'notes':[],'pages':[],'subjects':[],'chapters':[]}
     patterns=[f'%{w.replace("%", "\\%").replace("_", "\\_")}%' for w in words]
@@ -316,8 +326,12 @@ def search(user_id, query, limit=50):
         page_rows=conn.execute(
             f'SELECT pg.page_number,pg.text,p.id AS pdf_id,p.original_name,p.file_type,p.subject_id,p.chapter_id,c.name AS chapter_name,s.name AS subject_name FROM pdf_pages pg JOIN pdf_files p ON p.id=pg.pdf_id JOIN subjects s ON s.id=p.subject_id LEFT JOIN chapters c ON c.id=p.chapter_id WHERE pg.user_id=%s AND p.user_id=%s AND s.user_id=%s AND {page_where} ORDER BY p.id DESC,pg.page_number LIMIT %s',
             [user_id,user_id,user_id,*patterns,limit]).fetchall()
-    first=words[0]
-    return {'subjects':subject_rows,'chapters':chapter_rows,'notes':[dict(r,snippet=make_snippet(r['body'],first)) for r in notes_rows], 'pages':[dict(r,snippet=make_snippet(r['text'],first)) for r in page_rows]}
+    return {
+        'subjects':subject_rows,
+        'chapters':chapter_rows,
+        'notes':[dict(r,snippet=make_snippet(r['body'],words)) for r in notes_rows],
+        'pages':[dict(r,snippet=make_snippet(r['text'],words)) for r in page_rows]
+    }
 
 def search_locations(user_id, query='', limit=30):
     q=(query or '').strip()

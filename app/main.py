@@ -314,16 +314,23 @@ async def upload_document(request: Request, chapter_id: int, file: UploadFile = 
 def assistant_page(request: Request, q: str = ''):
     user=require_user(request)
     results = db.search(user['id'], q, limit=12) if q.strip() else None
-    return render(request, 'assistant.html', {'query': q, 'results': results})
+    return render(request, 'assistant.html', {'query': q, 'results': results, 'answer_parts': [], 'source_count': 0})
 
 @app.post('/assistant/ask', response_class=HTMLResponse)
 def assistant_ask(request: Request, question: str = Form(...), csrf_token: str = Form(...)):
     user=require_user(request); require_csrf(request,csrf_token)
     q=question.strip()
     if not q:
-        return render(request,'assistant.html',{'query':'','results':None,'error':'Please enter a question.'},400)
+        return render(request,'assistant.html',{'query':'','results':None,'answer_parts':[],'source_count':0,'error':'Please enter a question.'},400)
     results=db.search(user['id'],q,limit=12)
-    return render(request,'assistant.html',{'query':q,'results':results})
+    answer_parts=[]
+    if results:
+        for r in results.get('notes',[])[:2]:
+            answer_parts.append(f"{r['title']}: {r['body'][:700]}")
+        for r in results.get('pages',[])[:2]:
+            answer_parts.append(f"{r['original_name']} — page {r['page_number']}: {r['text'][:700]}")
+    source_count=(len(results.get('notes',[]))+len(results.get('pages',[]))) if results else 0
+    return render(request,'assistant.html',{'query':q,'results':results,'answer_parts':answer_parts,'source_count':source_count})
 
 @app.post('/audio-notes')
 async def save_audio_note(request: Request, subject_id: int = Form(...), chapter_id: str = Form(''), title: str = Form(...), transcript: str = Form(...), audio: UploadFile = File(...), csrf_token: str = Form(...)):
@@ -352,6 +359,15 @@ def open_pdf(request: Request,pdf_id: int):
     user=require_user(request); p=db.get_pdf(user['id'],pdf_id,True)
     if not p: raise HTTPException(404)
     return Response(content=bytes(p['data']), media_type='application/pdf', headers={'Content-Disposition': f"inline; filename*=UTF-8''{p['original_name'].replace(chr(34), '')}"})
+
+@app.get('/pdfs/{pdf_id}/viewer', response_class=HTMLResponse)
+def pdf_viewer(request: Request, pdf_id: int, page: int = 1, q: str = ''):
+    user=require_user(request)
+    pdf=db.get_pdf(user['id'], pdf_id)
+    if not pdf: raise HTTPException(404)
+    pages=db.get_pdf_pages(user['id'], pdf_id)
+    target=next((p for p in pages if int(p['page_number']) == int(page)), pages[0] if pages else None)
+    return render(request,'pdf_viewer.html',{'pdf':pdf,'pages':pages,'target':target,'query':q,'page_number':int(page)})
 
 @app.get('/pdfs/{pdf_id}/text',response_class=HTMLResponse)
 def pdf_text(request: Request,pdf_id:int):
