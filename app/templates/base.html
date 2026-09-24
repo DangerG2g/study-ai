@@ -20,7 +20,8 @@
     <nav>
       <a href="/" class="nav-link">⌂ <span>Dashboard</span></a>
       <a href="/search" class="nav-link">⌕ <span>Search knowledge</span></a>
-      <a href="/assistant" class="nav-link">✦ <span>Ask My Notes</span></a>
+      <a href="/assistant" class="nav-link">✦ <span>Ask Study</span></a>
+      <a href="/voice-note" class="nav-link">🎙 <span>Voice notes</span></a>
     </nav>
     <div class="side-label">MY SPACE</div>
     <div class="mini-note">Build your own study universe. Add subjects, chapters and learning material.</div>
@@ -33,7 +34,7 @@
   <main class="main">
     <header class="topbar">
       <div class="crumb">{% block crumb %}Workspace{% endblock %}</div>
-      {% if user %}<form class="top-search" action="/search" method="get"><span>⌕</span><input name="q" placeholder="Search notes, PDFs, topics..." value="{{ query|default('') }}"></form><div class="top-avatar">{{ user.username[0]|upper }}</div>{% endif %}
+      {% if user %}<form class="top-search" action="/search" method="get"><span>⌕</span><input id="globalSearchInput" name="q" placeholder="Search notes, PDFs, topics..." value="{{ query|default('') }}"><button type="button" class="voice-search-btn" id="voiceSearchBtn" title="Search by voice" aria-label="Search by voice">🎙</button></form><div class="top-avatar">{{ user.username[0]|upper }}</div>{% endif %}
     </header>
     <section class="content">{% block content %}{% endblock %}</section>
   </main>
@@ -51,6 +52,20 @@ function stopSpeaking(){if('speechSynthesis' in window)speechSynthesis.cancel()}
 function openModal(id){document.getElementById(id)?.classList.add('show')}
 function closeModal(id){document.getElementById(id)?.classList.remove('show')}
 document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.target.classList.remove('show')})
+</script>
+<script>
+(function(){
+  const btn=document.getElementById('voiceSearchBtn'), input=document.getElementById('globalSearchInput');
+  if(!btn||!input) return;
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){btn.title='Voice search is not supported in this browser';btn.style.opacity='.45';return;}
+  const r=new SR(); r.lang=navigator.language||'en-IN'; r.interimResults=false; r.maxAlternatives=1;
+  r.onstart=()=>{btn.classList.add('recording');btn.textContent='●';};
+  r.onend=()=>{btn.classList.remove('recording');btn.textContent='🎙';};
+  r.onerror=()=>{btn.classList.remove('recording');btn.textContent='🎙';};
+  r.onresult=e=>{const t=e.results[0][0].transcript.trim();if(t){input.value=t;input.form.submit();}};
+  btn.addEventListener('click',()=>{try{r.start()}catch(e){}});
+})();
 </script>
 {% block scripts %}{% endblock %}
 </body></html>
