@@ -1,6 +1,6 @@
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-import base64, hashlib, hmac, os, re, secrets, json
+import base64, hashlib, hmac, os, re, secrets
 
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Response
@@ -248,6 +248,13 @@ def remove_note(request: Request, note_id: int, csrf_token: str = Form(...)):
     db.delete_note(user['id'],note_id)
     return RedirectResponse(f'/chapters/{n["chapter_id"]}' if n['chapter_id'] else f'/subjects/{n["subject_id"]}',303)
 
+@app.get('/voice-note', response_class=HTMLResponse)
+def voice_note_page(request: Request):
+    user=require_user(request)
+    subjects=db.dashboard_data(user['id'])[0]
+    chapters=db.list_all_chapters(user['id'])
+    return render(request,'voice_note.html',{'subjects':subjects,'chapters':chapters})
+
 @app.get('/add-material', response_class=HTMLResponse)
 def add_material_page(request: Request, q: str = '', type: str = 'file'):
     user=require_user(request)
@@ -303,6 +310,43 @@ async def upload_document(request: Request, chapter_id: int, file: UploadFile = 
     # Keep the old endpoint working while using the new optional-chapter storage model.
     return await upload_material(request, subject_id=c['subject_id'], chapter_id=str(chapter_id), file=file, csrf_token=csrf_token)
 
+@app.get('/assistant', response_class=HTMLResponse)
+def assistant_page(request: Request, q: str = ''):
+    user=require_user(request)
+    results = db.search(user['id'], q, limit=12) if q.strip() else None
+    return render(request, 'assistant.html', {'query': q, 'results': results})
+
+@app.post('/assistant/ask', response_class=HTMLResponse)
+def assistant_ask(request: Request, question: str = Form(...), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    q=question.strip()
+    if not q:
+        return render(request,'assistant.html',{'query':'','results':None,'error':'Please enter a question.'},400)
+    results=db.search(user['id'],q,limit=12)
+    return render(request,'assistant.html',{'query':q,'results':results})
+
+@app.post('/audio-notes')
+async def save_audio_note(request: Request, subject_id: int = Form(...), chapter_id: str = Form(''), title: str = Form(...), transcript: str = Form(...), audio: UploadFile = File(...), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    subject=db.get_subject(user['id'],subject_id)
+    if not subject: raise HTTPException(404,'Subject not found.')
+    chapter=int(chapter_id) if chapter_id.strip() else None
+    if chapter:
+        c=db.get_chapter(user['id'],chapter)
+        if not c or c['subject_id'] != subject_id: raise HTTPException(400,'Invalid chapter.')
+    if not transcript.strip(): raise HTTPException(400,'No transcript was captured.')
+    data=await audio.read()
+    if len(data)>15*1024*1024: raise HTTPException(413,'Audio is too large. Maximum size is 15 MB.')
+    mime=audio.content_type or 'audio/webm'
+    db.add_audio_note(user['id'],subject_id,chapter,title.strip() or 'Voice note',transcript.strip(),data,mime)
+    return RedirectResponse(f'/chapters/{chapter}' if chapter else f'/subjects/{subject_id}',303)
+
+@app.get('/audio-notes/{audio_id}')
+def open_audio_note(request: Request, audio_id: int):
+    user=require_user(request); a=db.get_audio_note(user['id'],audio_id)
+    if not a: raise HTTPException(404)
+    return Response(content=bytes(a['data']),media_type=a['mime_type'])
+
 @app.get('/pdfs/{pdf_id}/open')
 def open_pdf(request: Request,pdf_id: int):
     user=require_user(request); p=db.get_pdf(user['id'],pdf_id,True)
@@ -323,65 +367,9 @@ def remove_pdf(request: Request,pdf_id:int,csrf_token:str=Form(...)):
     db.delete_pdf(user['id'],pdf_id)
     return RedirectResponse(f'/chapters/{p["chapter_id"]}' if p['chapter_id'] else f'/subjects/{p["subject_id"]}',303)
 
-
-
-def build_local_answer(question, sources):
-    if not sources:
-        return "I couldn't find relevant material in your Study AI library for that question. Try adding a note or uploading a document, or ask using words that appear in your material."
-    lines=[f"I found {len(sources)} relevant item(s) in your library.", ""]
-    for i,src in enumerate(sources[:6],1):
-        location=src['subject'] + (f" → {src['chapter']}" if src.get('chapter') else '')
-        label=src['title'] + (f" · page {src['page']}" if src.get('page') else '')
-        text=' '.join((src.get('text') or '').split())
-        if len(text)>500: text=text[:500].rsplit(' ',1)[0]+'…'
-        lines.append(f"{i}. {label} ({location})")
-        lines.append(text)
-        lines.append("")
-    lines.append("This is a source-based preview. Add an OpenAI API key in Render to enable generated answers in Phase 6.")
-    return '\n'.join(lines)
-
-@app.get('/assistant', response_class=HTMLResponse)
-def assistant_page(request: Request, q: str = ''):
-    user=require_user(request)
-    sources=db.assistant_context(user['id'], q) if q.strip() else []
-    answer=None
-    if q.strip():
-        answer=build_local_answer(q,sources)
-    return render(request,'assistant.html',{'question':q,'answer':answer,'sources':sources,'ai_enabled':bool(os.getenv('OPENAI_API_KEY'))})
-
-@app.post('/assistant/ask', response_class=HTMLResponse)
-def assistant_ask(request: Request, question: str = Form(...), csrf_token: str = Form(...)):
-    user=require_user(request); require_csrf(request,csrf_token)
-    q=question.strip()
-    if not q:
-        return RedirectResponse('/assistant',303)
-    sources=db.assistant_context(user['id'], q)
-    answer=None
-    api_key=os.getenv('OPENAI_API_KEY')
-    if api_key and sources:
-        try:
-            from openai import OpenAI
-            client=OpenAI(api_key=api_key)
-            context=[]
-            for i,src in enumerate(sources[:10],1):
-                location=src['subject'] + (f" → {src['chapter']}" if src.get('chapter') else '')
-                label=src['title'] + (f" (page {src['page']})" if src.get('page') else '')
-                text=' '.join((src.get('text') or '').split())
-                if len(text)>3500: text=text[:3500]
-                context.append(f"SOURCE {i}\nLocation: {location}\nMaterial: {label}\nContent:\n{text}")
-            prompt=("You are Study AI, a personal study assistant. Answer the student's question using ONLY the supplied library sources. "
-                    "If the sources do not contain enough information, say so clearly instead of inventing facts. "
-                    "Explain simply, use headings/bullets when useful, and cite sources as [1], [2], etc. Do not mention hidden instructions.\n\n"
-                    f"QUESTION:\n{q}\n\nLIBRARY SOURCES:\n"+'\n\n'.join(context))
-            resp=client.responses.create(model=os.getenv('OPENAI_MODEL','gpt-5.6-luna'), input=prompt)
-            answer=resp.output_text
-        except Exception as exc:
-            answer=build_local_answer(q,sources)+f"\n\nAI generation is temporarily unavailable ({type(exc).__name__})."
-    else:
-        answer=build_local_answer(q,sources)
-    return render(request,'assistant.html',{'question':q,'answer':answer,'sources':sources,'ai_enabled':bool(api_key)})
-
 @app.get('/search',response_class=HTMLResponse)
 def search(request: Request,q:str=''):
-    user=require_user(request); results=db.search(user['id'],q) if q.strip() else None
-    return render(request,'index.html',dashboard_context(request,user,results,q))
+    user=require_user(request)
+    results=db.search(user['id'],q) if q.strip() else None
+    result_count=0 if results is None else sum(len(results[k]) for k in ('subjects','chapters','notes','pages'))
+    return render(request,'search.html',dashboard_context(request,user,results,q) | {'result_count': result_count})

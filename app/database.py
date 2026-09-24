@@ -62,6 +62,17 @@ CREATE INDEX IF NOT EXISTS idx_chapters_user ON chapters(user_id);
 CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id);
 CREATE INDEX IF NOT EXISTS idx_pdf_user ON pdf_files(user_id);
 CREATE INDEX IF NOT EXISTS idx_pdf_pages_user ON pdf_pages(user_id);
+CREATE TABLE IF NOT EXISTS audio_notes (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    note_id BIGINT REFERENCES notes(id) ON DELETE CASCADE,
+    subject_id BIGINT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    chapter_id BIGINT REFERENCES chapters(id) ON DELETE CASCADE,
+    mime_type TEXT NOT NULL DEFAULT 'audio/webm',
+    data BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_audio_notes_user ON audio_notes(user_id);
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS file_type VARCHAR(10) NOT NULL DEFAULT 'pdf';
 """
 
@@ -258,6 +269,21 @@ def delete_pdf(user_id, pdf_id):
     with connect() as conn:
         conn.execute('DELETE FROM pdf_files WHERE id=%s AND user_id=%s', (pdf_id,user_id))
 
+
+def add_audio_note(user_id, subject_id, chapter_id, title, transcript, data, mime_type='audio/webm'):
+    with connect() as conn:
+        note = add_note(user_id, subject_id, chapter_id, title, transcript)
+        if not note:
+            return None
+        row = conn.execute(
+            'INSERT INTO audio_notes(user_id,note_id,subject_id,chapter_id,mime_type,data) VALUES(%s,%s,%s,%s,%s,%s) RETURNING id',
+            (user_id, note['id'], subject_id, chapter_id, mime_type, data)
+        ).fetchone()
+        return row['id'] if row else None
+
+def get_audio_note(user_id, audio_id):
+    with connect() as conn:
+        return conn.execute('SELECT * FROM audio_notes WHERE id=%s AND user_id=%s', (audio_id,user_id)).fetchone()
 
 def make_snippet(text, word, width=70):
     flat=' '.join(text.split()); pos=flat.lower().find(word.lower())
