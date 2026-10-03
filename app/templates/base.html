@@ -20,6 +20,7 @@
     <nav>
       <a href="/" class="nav-link">⌂ <span>Dashboard</span></a>
       <a href="/search" class="nav-link">⌕ <span>Search knowledge</span></a>
+      <a href="/add-material" class="nav-link nav-add-material">＋ <span>Add Material</span></a>
       <a href="/assistant" class="nav-link">✦ <span>Ask Study</span></a>
     </nav>
     <div class="side-label">MY SPACE</div>
@@ -39,7 +40,7 @@
   </main>
 </div>
 <script>
-function speakText(text){if(!('speechSynthesis' in window))return; speechSynthesis.cancel();let u=new SpeechSynthesisUtterance(text);u.rate=.96;u.pitch=1;speechSynthesis.speak(u)}
+function speakText(text,button){if(!('speechSynthesis' in window)){alert('Text-to-speech is not supported in this browser.');return;} speechSynthesis.cancel(); if(button){button.disabled=true;button.textContent='■ Speaking…';} const u=new SpeechSynthesisUtterance(String(text||''));u.rate=.96;u.pitch=1;u.volume=1;u.onend=()=>{if(button){button.disabled=false;button.textContent='▶ Listen';}};u.onerror=()=>{if(button){button.disabled=false;button.textContent='▶ Listen';}}; const voices=speechSynthesis.getVoices(); if(voices.length) u.voice=voices.find(v=>/^en(-IN|-GB|-US)?$/i.test(v.lang))||voices[0]; speechSynthesis.speak(u); setTimeout(()=>{if(speechSynthesis.speaking===false && button){button.disabled=false;button.textContent='▶ Listen';}},500)}
 function stopSpeaking(){if('speechSynthesis' in window)speechSynthesis.cancel()}
 (function(){
   const bg=document.querySelector('.ambient'); if(!bg) return;
