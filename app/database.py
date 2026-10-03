@@ -124,6 +124,10 @@ def reset_login_failures(user_id):
     with connect() as conn:
         conn.execute('UPDATE users SET failed_attempts=0, locked_until=NULL WHERE id=%s', (user_id,))
 
+def change_password(user_id, password_hash):
+    with connect() as conn:
+        conn.execute('UPDATE users SET password_hash=%s, failed_attempts=0, locked_until=NULL WHERE id=%s', (password_hash, user_id))
+
 # ---------- dashboard / study data ----------
 def dashboard_data(user_id):
     with connect() as conn:
@@ -324,13 +328,21 @@ def search(user_id, query, limit=50):
             f'SELECT n.id,n.title,n.body,n.subject_id,n.chapter_id,c.name AS chapter_name,s.name AS subject_name FROM notes n JOIN subjects s ON s.id=n.subject_id LEFT JOIN chapters c ON c.id=n.chapter_id WHERE n.user_id=%s AND s.user_id=%s AND {note_where} ORDER BY n.id DESC LIMIT %s',
             [user_id,user_id,*note_params,limit]).fetchall()
         page_rows=conn.execute(
-            f'SELECT pg.page_number,pg.text,p.id AS pdf_id,p.original_name,p.file_type,p.subject_id,p.chapter_id,c.name AS chapter_name,s.name AS subject_name FROM pdf_pages pg JOIN pdf_files p ON p.id=pg.pdf_id JOIN subjects s ON s.id=p.subject_id LEFT JOIN chapters c ON c.id=p.chapter_id WHERE pg.user_id=%s AND p.user_id=%s AND s.user_id=%s AND {page_where} ORDER BY p.id DESC,pg.page_number LIMIT %s',
-            [user_id,user_id,user_id,*patterns,limit]).fetchall()
+            f'SELECT pg.page_number,pg.text,p.id AS pdf_id,p.original_name,p.page_count,p.file_type,p.subject_id,p.chapter_id,c.name AS chapter_name,s.name AS subject_name FROM pdf_pages pg JOIN pdf_files p ON p.id=pg.pdf_id JOIN subjects s ON s.id=p.subject_id LEFT JOIN chapters c ON c.id=p.chapter_id WHERE pg.user_id=%s AND p.user_id=%s AND s.user_id=%s AND {page_where}',
+            [user_id,user_id,user_id,*patterns]).fetchall()
+    page_results=[]
+    for r in page_rows:
+        text=r['text'] or ''
+        lower=text.lower()
+        score=sum(lower.count(w.lower()) for w in words)
+        item=dict(r,score=score,snippet=make_snippet(text,words))
+        page_results.append(item)
+    page_results.sort(key=lambda x:(-x['score'], -int(x['page_number'] == 1), int(x['page_number'])))
     return {
         'subjects':subject_rows,
         'chapters':chapter_rows,
         'notes':[dict(r,snippet=make_snippet(r['body'],words)) for r in notes_rows],
-        'pages':[dict(r,snippet=make_snippet(r['text'],words)) for r in page_rows]
+        'pages':page_results[:limit]
     }
 
 def search_locations(user_id, query='', limit=30):

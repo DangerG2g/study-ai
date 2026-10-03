@@ -96,6 +96,9 @@ def auth_redirect(path='/login'):
 @app.on_event('startup')
 def startup():
     db.init_db()
+    # Demo account for mentor presentations. It is only created if missing.
+    if not db.get_user_by_username('demo'):
+        db.create_user('demo', hash_password('Demo@12345'))
 
 @app.get('/health')
 def health():
@@ -123,6 +126,41 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     response = RedirectResponse('/', status_code=303)
     response.set_cookie('study_session', make_session(u['id']), max_age=SESSION_MAX_AGE, httponly=True, secure=bool(os.getenv('RENDER')), samesite='lax')
     return response
+
+@app.post('/demo-login')
+def demo_login(request: Request):
+    u = db.get_user_by_username('demo')
+    if not u:
+        raise HTTPException(503, 'Demo account is not available yet. Refresh once and try again.')
+    response = RedirectResponse('/', status_code=303)
+    response.set_cookie('study_session', make_session(u['id']), max_age=SESSION_MAX_AGE, httponly=True, secure=bool(os.getenv('RENDER')), samesite='lax')
+    return response
+
+@app.get('/change-password', response_class=HTMLResponse)
+def change_password_page(request: Request):
+    require_user(request)
+    return render(request, 'change_password.html', {'error': None, 'success': None})
+
+@app.post('/change-password', response_class=HTMLResponse)
+def change_password(request: Request, current_password: str = Form(...), new_password: str = Form(...), confirm_password: str = Form(...), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request, csrf_token)
+    record=db.get_user_by_username(user['username'])
+    if not record or not verify_password(current_password, record['password_hash']):
+        return render(request, 'change_password.html', {'error':'Current password is incorrect.', 'success':None}, 400)
+    if len(new_password) < PASSWORD_MIN:
+        return render(request, 'change_password.html', {'error':f'New password must be at least {PASSWORD_MIN} characters.', 'success':None}, 400)
+    if new_password.lower() == user['username'].lower():
+        return render(request, 'change_password.html', {'error':'Password cannot be the same as your username.', 'success':None}, 400)
+    if new_password != confirm_password:
+        return render(request, 'change_password.html', {'error':'New passwords do not match.', 'success':None}, 400)
+    db.change_password(user['id'], hash_password(new_password))
+    return render(request, 'change_password.html', {'error':None, 'success':'Password changed successfully.'})
+
+@app.get('/forgot-password', response_class=HTMLResponse)
+def forgot_password_page(request: Request):
+    if current_user(request):
+        return RedirectResponse('/change-password', status_code=303)
+    return render(request, 'forgot_password.html', {'demo_username':'demo', 'demo_password':'Demo@12345'})
 
 @app.get('/register', response_class=HTMLResponse)
 def register_page(request: Request):
@@ -259,7 +297,7 @@ def voice_note_page(request: Request):
 def add_material_page(request: Request, q: str = '', type: str = 'file'):
     user=require_user(request)
     locations=db.search_locations(user['id'],q)
-    initial_type = 'note' if type.lower() == 'note' else 'file'
+    initial_type = type.lower() if type.lower() in {'file','note','voice'} else 'file'
     return render(request,'add_material.html',{'locations':locations,'query':q,'initial_type':initial_type})
 
 @app.get('/add-notes')
@@ -291,15 +329,17 @@ async def upload_material(request: Request, subject_id: int = Form(...), chapter
         if not c or c['subject_id'] != subject_id: raise HTTPException(400,'Invalid chapter.')
     name=Path(file.filename or '').name
     ext=Path(name).suffix.lower()
-    allowed={'.pdf':'pdf','.docx':'docx','.pptx':'pptx'}
-    if ext not in allowed: raise HTTPException(400,'Supported files: PDF, Word (.docx), and PowerPoint (.pptx).')
+    allowed={'.pdf':'pdf','.docx':'docx','.pptx':'pptx','.jpg':'jpg','.jpeg':'jpeg','.png':'png','.webp':'webp','.gif':'gif'}
+    if ext not in allowed: raise HTTPException(400,'Supported files: PDF, DOCX, PPTX, JPG, JPEG, PNG, WEBP, and GIF.')
     data=await file.read()
     if len(data)>25*1024*1024: raise HTTPException(413,'File is too large. Maximum size is 25 MB.')
-    temp=BASE_DIR/'uploads'/f'{secrets.token_hex(12)}{ext}'; temp.parent.mkdir(exist_ok=True); temp.write_bytes(data)
-    try: pages=extract_document(temp)
-    except Exception as e: raise HTTPException(400,f'Could not read this file: {e}')
-    finally: temp.unlink(missing_ok=True)
-    db.add_pdf(user['id'],subject_id,chapter,name,data,len(pages),[(i,t) for i,t in pages if t],allowed[ext])
+    pages=[]
+    if ext in {'.pdf','.docx','.pptx'}:
+        temp=BASE_DIR/'uploads'/f'{secrets.token_hex(12)}{ext}'; temp.parent.mkdir(exist_ok=True); temp.write_bytes(data)
+        try: pages=extract_document(temp)
+        except Exception as e: raise HTTPException(400,f'Could not read this file: {e}')
+        finally: temp.unlink(missing_ok=True)
+    db.add_pdf(user['id'],subject_id,chapter,name,data,len(pages) if pages else 1,[(i,t) for i,t in pages if t],allowed[ext])
     return RedirectResponse(f'/chapters/{chapter}' if chapter else f'/subjects/{subject_id}',303)
 
 @app.post('/chapters/{chapter_id}/pdfs')
@@ -353,6 +393,13 @@ def open_audio_note(request: Request, audio_id: int):
     user=require_user(request); a=db.get_audio_note(user['id'],audio_id)
     if not a: raise HTTPException(404)
     return Response(content=bytes(a['data']),media_type=a['mime_type'])
+
+@app.get('/files/{file_id}/open')
+def open_file(request: Request, file_id: int):
+    user=require_user(request); p=db.get_pdf(user['id'],file_id,True)
+    if not p: raise HTTPException(404)
+    mime={'pdf':'application/pdf','docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}.get(p['file_type'],'application/octet-stream')
+    return Response(content=bytes(p['data']), media_type=mime, headers={'Content-Disposition': f"inline; filename*=UTF-8''{p['original_name'].replace(chr(34), '')}"})
 
 @app.get('/pdfs/{pdf_id}/open')
 def open_pdf(request: Request,pdf_id: int):
