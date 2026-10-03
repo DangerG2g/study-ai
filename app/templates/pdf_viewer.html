@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}{{ pdf.original_name }} · Study AI Reader{% endblock %}
+{% block crumb %}PDF reader / {{ pdf.original_name }}{% endblock %}
+{% block content %}
+<div class="pdf-reader-head"><div><a class="back" href="{% if pdf.chapter_id %}/chapters/{{ pdf.chapter_id }}{% else %}/subjects/{{ pdf.subject_id }}{% endif %}">← Back</a><div class="eyebrow">PDF READER</div><h1>{{ pdf.original_name }}</h1><p>{% if query %}Match for <strong>“{{ query }}”</strong> · page {{ page_number }}{% else %}Page {{ page_number }}{% endif %}</p></div><div class="head-actions"><a class="primary" target="_blank" rel="noopener" href="/pdfs/{{ pdf.id }}/open#page={{ page_number }}">Open original PDF ↗</a></div></div>
+<div class="pdf-reader-grid">
+  <section class="pdf-frame-card"><div class="pdf-frame-top"><span>PDF PREVIEW</span><span>PAGE {{ page_number }}</span></div><iframe title="PDF preview" src="/pdfs/{{ pdf.id }}/open#page={{ page_number }}{% if query %}&search={{ query|urlencode }}{% endif %}"></iframe></section>
+  <aside class="pdf-match-card"><div class="eyebrow">MATCHED TEXT</div><h2>{% if query %}“{{ query }}”{% else %}Page text{% endif %}</h2>{% if target %}<div class="match-page-label">PAGE {{ target.page_number }}</div><pre id="matchedText">{{ target.text }}</pre><div id="detectedLink" class="detected-link" hidden></div>{% else %}<p class="muted">No extracted text is available for this page.</p>{% endif %}</aside>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+(function(){
+const q={{ query|tojson }};
+const el=document.getElementById('matchedText');
+const linkBox=document.getElementById('detectedLink');
+if(!el)return;
+const esc=s=>s.replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));
+const words=(q||'').split(/\s+/).filter(Boolean).sort((a,b)=>b.length-a.length).map(s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+let html=esc(el.textContent);
+if(words.length){const re=new RegExp('('+words.join('|')+')','gi');html=html.replace(re,'<mark>$1</mark>')}
+const urls=[...new Set((el.textContent.match(/https?:\/\/[^\s<>'\"\)]+/gi)||[]))];
+el.innerHTML=html;
+if(urls.length){const wanted=(q&&urls.find(u=>u.toLowerCase().includes(q.toLowerCase())))||urls[0];linkBox.hidden=false;linkBox.innerHTML='<span>LINK FOUND</span><a target="_blank" rel="noopener noreferrer" href="'+wanted+'">Open detected URL ↗</a>'}
+})();
+</script>{% endblock %}
