@@ -294,7 +294,7 @@ def voice_note_page(request: Request):
     return render(request,'voice_note.html',{'subjects':subjects,'chapters':chapters})
 
 @app.get('/add-material', response_class=HTMLResponse)
-def add_material_page(request: Request, q: str = '', type: str = 'file', subject_id: int = 0, chapter_id: int = 0):
+def add_material_page(request: Request, q: str = '', type: str = 'file', subject_id: int = 0, chapter_id: int = 0, chapter_q: str = ''):
     user=require_user(request)
     locations=db.search_locations(user['id'],q)
     initial_type = type.lower() if type.lower() in {'file','note','voice'} else 'file'
@@ -302,7 +302,11 @@ def add_material_page(request: Request, q: str = '', type: str = 'file', subject
     selected_chapter = db.get_chapter(user['id'], chapter_id) if chapter_id else None
     if selected_chapter and (not selected_subject or selected_chapter['subject_id'] != selected_subject['id']):
         selected_chapter = None
-    return render(request,'add_material.html',{'locations':locations,'query':q,'initial_type':initial_type,'selected_subject':selected_subject,'selected_chapter':selected_chapter})
+    subject_chapters = db.list_chapters(user['id'], subject_id) if selected_subject else []
+    if chapter_q.strip():
+        cq = chapter_q.strip().lower()
+        subject_chapters = [c for c in subject_chapters if cq in c['name'].lower()]
+    return render(request,'add_material.html',{'locations':locations,'query':q,'chapter_query':chapter_q,'subject_chapters':subject_chapters,'initial_type':initial_type,'selected_subject':selected_subject,'selected_chapter':selected_chapter})
 
 
 @app.post('/add-material/create-subject')
