@@ -165,7 +165,7 @@ def list_chapters(user_id, subject_id):
 
 def list_subject_notes(user_id, subject_id):
     with connect() as conn:
-        return conn.execute('''SELECT id,title,body,subject_id,chapter_id FROM notes WHERE subject_id=%s AND chapter_id IS NULL AND user_id=%s ORDER BY id DESC''', (subject_id,user_id)).fetchall()
+        return conn.execute('''SELECT n.id,n.title,n.body,n.subject_id,n.chapter_id,a.id AS audio_id FROM notes n LEFT JOIN audio_notes a ON a.note_id=n.id WHERE n.subject_id=%s AND n.chapter_id IS NULL AND n.user_id=%s ORDER BY n.id DESC''', (subject_id,user_id)).fetchall()
 
 def list_subject_pdfs(user_id, subject_id):
     with connect() as conn:
@@ -219,12 +219,12 @@ def update_note(user_id, note_id, title, body):
 
 def list_notes(user_id, chapter_id):
     with connect() as conn:
-        return conn.execute('SELECT id,title,body,chapter_id FROM notes WHERE chapter_id=%s AND user_id=%s ORDER BY id DESC', (chapter_id,user_id)).fetchall()
+        return conn.execute('SELECT n.id,n.title,n.body,n.chapter_id,a.id AS audio_id FROM notes n LEFT JOIN audio_notes a ON a.note_id=n.id WHERE n.chapter_id=%s AND n.user_id=%s ORDER BY n.id DESC', (chapter_id,user_id)).fetchall()
 
 
 def get_note(user_id, note_id):
     with connect() as conn:
-        return conn.execute('SELECT * FROM notes WHERE id=%s AND user_id=%s', (note_id,user_id)).fetchone()
+        return conn.execute('SELECT n.*,a.id AS audio_id FROM notes n LEFT JOIN audio_notes a ON a.note_id=n.id WHERE n.id=%s AND n.user_id=%s', (note_id,user_id)).fetchone()
 
 
 def add_note(user_id, subject_id, chapter_id, title, body):

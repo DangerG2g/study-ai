@@ -294,11 +294,31 @@ def voice_note_page(request: Request):
     return render(request,'voice_note.html',{'subjects':subjects,'chapters':chapters})
 
 @app.get('/add-material', response_class=HTMLResponse)
-def add_material_page(request: Request, q: str = '', type: str = 'file'):
+def add_material_page(request: Request, q: str = '', type: str = 'file', subject_id: int = 0, chapter_id: int = 0):
     user=require_user(request)
     locations=db.search_locations(user['id'],q)
     initial_type = type.lower() if type.lower() in {'file','note','voice'} else 'file'
-    return render(request,'add_material.html',{'locations':locations,'query':q,'initial_type':initial_type})
+    selected_subject = db.get_subject(user['id'], subject_id) if subject_id else None
+    selected_chapter = db.get_chapter(user['id'], chapter_id) if chapter_id else None
+    if selected_chapter and (not selected_subject or selected_chapter['subject_id'] != selected_subject['id']):
+        selected_chapter = None
+    return render(request,'add_material.html',{'locations':locations,'query':q,'initial_type':initial_type,'selected_subject':selected_subject,'selected_chapter':selected_chapter})
+
+
+@app.post('/add-material/create-subject')
+def add_material_create_subject(request: Request, name: str = Form(...), type: str = Form('file'), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    if not name.strip(): raise HTTPException(400,'Subject name is required.')
+    subject=db.add_subject(user['id'], name.strip())
+    return RedirectResponse(f'/add-material?subject_id={subject["id"]}&type={type}',303)
+
+@app.post('/add-material/create-chapter')
+def add_material_create_chapter(request: Request, subject_id: int = Form(...), name: str = Form(...), type: str = Form('file'), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    if not db.get_subject(user['id'],subject_id): raise HTTPException(404,'Subject not found.')
+    if not name.strip(): raise HTTPException(400,'Chapter name is required.')
+    chapter=db.add_chapter(user['id'],subject_id,name.strip())
+    return RedirectResponse(f'/add-material?subject_id={subject_id}&chapter_id={chapter["id"]}&type={type}',303)
 
 @app.get('/add-notes')
 def add_notes_alias(request: Request):
@@ -388,6 +408,13 @@ async def save_audio_note(request: Request, subject_id: int = Form(...), chapter
     db.add_audio_note(user['id'],subject_id,chapter,title.strip() or 'Voice note',transcript.strip(),data,mime)
     return RedirectResponse(f'/chapters/{chapter}' if chapter else f'/subjects/{subject_id}',303)
 
+@app.get('/audio-notes/{audio_id}/play')
+def play_audio_note(request: Request, audio_id: int):
+    user=require_user(request)
+    audio=db.get_audio_note(user['id'],audio_id)
+    if not audio: raise HTTPException(404)
+    return Response(content=bytes(audio['data']), media_type=audio['mime_type'], headers={'Content-Disposition': 'inline'})
+
 @app.get('/audio-notes/{audio_id}')
 def open_audio_note(request: Request, audio_id: int):
     user=require_user(request); a=db.get_audio_note(user['id'],audio_id)
@@ -399,7 +426,28 @@ def open_file(request: Request, file_id: int):
     user=require_user(request); p=db.get_pdf(user['id'],file_id,True)
     if not p: raise HTTPException(404)
     mime={'pdf':'application/pdf','docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}.get(p['file_type'],'application/octet-stream')
-    return Response(content=bytes(p['data']), media_type=mime, headers={'Content-Disposition': f"inline; filename*=UTF-8''{p['original_name'].replace(chr(34), '')}"})
+    # Browsers do not natively render DOCX/PPTX. Keep this endpoint for PDFs/images,
+    # while the UI uses /view for Office files and /download for the original.
+    disposition='inline' if p['file_type'] in {'pdf','jpg','jpeg','png','webp','gif'} else 'attachment'
+    return Response(content=bytes(p['data']), media_type=mime, headers={'Content-Disposition': f"{disposition}; filename=\"{p['original_name'].replace(chr(34), '')}\""})
+
+@app.get('/files/{file_id}/download')
+def download_file(request: Request, file_id: int):
+    user=require_user(request); p=db.get_pdf(user['id'],file_id,True)
+    if not p: raise HTTPException(404)
+    mime={'pdf':'application/pdf','docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}.get(p['file_type'],'application/octet-stream')
+    return Response(content=bytes(p['data']), media_type=mime, headers={'Content-Disposition': f"attachment; filename=\"{p['original_name'].replace(chr(34), '')}\""})
+
+@app.get('/files/{file_id}/view', response_class=HTMLResponse)
+def view_file(request: Request, file_id: int):
+    user=require_user(request); p=db.get_pdf(user['id'],file_id)
+    if not p: raise HTTPException(404)
+    if p['file_type'] == 'pdf':
+        return RedirectResponse(f'/pdfs/{file_id}/viewer', 303)
+    if p['file_type'] in {'jpg','jpeg','png','webp','gif'}:
+        return RedirectResponse(f'/files/{file_id}/open', 303)
+    pages=db.get_pdf_pages(user['id'],file_id)
+    return render(request,'document_viewer.html',{'file':p,'pages':pages})
 
 @app.get('/pdfs/{pdf_id}/open')
 def open_pdf(request: Request,pdf_id: int):
