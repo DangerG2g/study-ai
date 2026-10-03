@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section-head"><div><div class="eyebrow">DOCUMENT VIEWER</div><h1>{{ file.original_name }}</h1><p class="muted">{{ file.file_type|upper }} · Readable extracted text</p></div><a class="ghost" href="/files/{{ file.id }}/download">Download original</a></div>
+<div class="document-reader">
+  {% if pages %}
+    {% for page in pages %}
+    <section class="document-page"><div class="page-label">{% if file.file_type == 'pptx' %}Slide{% else %}Page{% endif %} {{ page.page_number }}</div><div class="document-text">{{ page.text }}</div></section>
+    {% endfor %}
+  {% else %}
+    <div class="empty-card"><h3>No readable text was extracted</h3><p>You can still download the original {{ file.file_type|upper }} file.</p></div>
+  {% endif %}
+</div>
+{% endblock %}
