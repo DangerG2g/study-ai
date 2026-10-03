@@ -2,87 +2,60 @@
 {% block title %}Add Material · Study AI{% endblock %}
 {% block crumb %}<a href="/">Dashboard</a> / Add Material{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div><a class="back" href="/">← Dashboard</a><div class="eyebrow">QUICK ADD</div><h1>Add material</h1><p>Choose a subject or chapter. A chapter is optional.</p></div>
-</div>
+<div class="page-head"><div><a class="back" href="/">← Dashboard</a><div class="eyebrow">ADD MATERIAL</div><h1>Add material</h1><p>Choose where it belongs, then choose how you want to add it.</p></div></div>
 <div class="material-layout">
-  <section class="panel material-location-panel">
-    <div class="eyebrow">STEP 1</div><h2>Where should it go?</h2>
-    <p class="muted">Search your subjects and chapters, then select one location.</p>
-    <form class="location-search" method="get" action="/add-material">
-      <input type="hidden" name="type" value="{{ initial_type }}">
-      <input name="q" value="{{ query }}" placeholder="Search subject or chapter..." autocomplete="off">
-      <button class="ghost" type="submit">Search</button>
-    </form>
-    <div class="location-list">
-      {% if locations.subjects %}<div class="location-label">SUBJECTS</div>{% endif %}
-      {% for s in locations.subjects %}
-      <label class="location-option">
-        <input type="radio" name="location" value="subject:{{ s.id }}" data-subject="{{ s.id }}" data-chapter="">
-        <span class="location-icon">📚</span><span><b>{{ s.name }}</b><small>Save directly in this subject</small></span><span class="location-check">✓</span>
-      </label>
-      {% endfor %}
-      {% if locations.chapters %}<div class="location-label">CHAPTERS</div>{% endif %}
-      {% for c in locations.chapters %}
-      <label class="location-option">
-        <input type="radio" name="location" value="chapter:{{ c.id }}" data-subject="{{ c.subject_id }}" data-chapter="{{ c.id }}">
-        <span class="location-icon">📖</span><span><b>{{ c.name }}</b><small>{{ c.subject_name }}</small></span><span class="location-check">✓</span>
-      </label>
-      {% endfor %}
-      {% if not locations.subjects and not locations.chapters %}<div class="empty-card compact-empty"><h3>No matching locations</h3><p>Create a subject first, then come back here.</p><a class="primary" href="/">Create subject</a></div>{% endif %}
-    </div>
-    <div class="location-tip"><b>💡 Tip</b><span>You can store material directly in a subject. You only need a chapter when you want more organization.</span></div>
-  </section>
+<section class="panel material-location-panel">
+<div class="eyebrow">STEP 1</div><h2>Choose location</h2>
+<form class="location-search" method="get" action="/add-material"><input type="hidden" name="type" value="{{ initial_type }}"><input name="q" value="{{ query }}" placeholder="Search subject or chapter..." autocomplete="off"><button class="ghost" type="submit">Search</button></form>
+<div class="location-list">
+{% if locations.subjects %}<div class="location-label">SUBJECTS</div>{% endif %}
+{% for s in locations.subjects %}<label class="location-option"><input type="radio" name="location" value="subject:{{ s.id }}" data-subject="{{ s.id }}" data-chapter=""><span class="location-icon">📚</span><span><b>{{ s.name }}</b><small>Directly in this subject</small></span><span class="location-check">✓</span></label>{% endfor %}
+{% if locations.chapters %}<div class="location-label">CHAPTERS</div>{% endif %}
+{% for c in locations.chapters %}<label class="location-option"><input type="radio" name="location" value="chapter:{{ c.id }}" data-subject="{{ c.subject_id }}" data-chapter="{{ c.id }}"><span class="location-icon">📖</span><span><b>{{ c.name }}</b><small>{{ c.subject_name }}</small></span><span class="location-check">✓</span></label>{% endfor %}
+{% if not locations.subjects and not locations.chapters %}<div class="empty-card compact-empty"><h3>No matching locations</h3><p>Create a subject first, then come back here.</p><a class="primary" href="/">Create subject</a></div>{% endif %}
+</div>
+<div class="location-tip"><b>Tip</b><span>A chapter is optional. You can keep material directly in a subject.</span></div>
+</section>
 
-  <section class="panel material-actions-panel">
-    <div class="eyebrow">STEP 2</div><h2>What are you adding?</h2>
-    <div class="material-type-grid">
-      <button type="button" class="material-type{% if initial_type == 'file' %} active{% endif %}" data-tab="fileTab"><span>📎</span><b>File</b><small>PDF, Word, PowerPoint</small></button>
-      <button type="button" class="material-type{% if initial_type == 'note' %} active{% endif %}" data-tab="noteTab"><span>📝</span><b>Note</b><small>Write and save a note</small></button>
-    </div>
-
-    <div id="fileTab" class="material-tab"{% if initial_type == 'note' %} hidden{% endif %}>
-      <form id="fileForm" method="post" action="/materials/file" enctype="multipart/form-data">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subject_id" class="chosen-subject"><input type="hidden" name="chapter_id" class="chosen-chapter">
-        <label class="dropzone"><input type="file" name="file" accept=".pdf,.docx,.pptx" required><span class="drop-icon">↥</span><b>Choose a file</b><small>PDF · DOCX · PPTX · up to 25 MB</small></label>
-        <button class="primary full" type="submit">Upload material</button>
-      </form>
-    </div>
-
-    <div id="noteTab" class="material-tab"{% if initial_type != 'note' %} hidden{% endif %}>
-      <form id="noteForm" method="post" action="/materials/note">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subject_id" class="chosen-subject"><input type="hidden" name="chapter_id" class="chosen-chapter">
-        <label>Note title<input name="title" placeholder="e.g. Important formulas" required></label>
-        <label>Note<textarea name="body" rows="10" placeholder="Write your note, summary or idea..." required></textarea></label>
-        <button class="primary full" type="submit">Save note</button>
-      </form>
-    </div>
-
-    <div class="selected-location"><span>Selected location</span><b id="selectedLocation">Choose a subject or chapter</b></div>
-  </section>
+<section class="panel material-actions-panel">
+<div class="eyebrow">STEP 2</div><h2>Choose material type</h2>
+<div class="material-type-grid three">
+<button type="button" class="material-type{% if initial_type == 'file' %} active{% endif %}" data-tab="fileTab"><span>📎</span><b>File</b><small>PDF, DOCX, PPTX, images</small></button>
+<button type="button" class="material-type{% if initial_type == 'note' %} active{% endif %}" data-tab="noteTab"><span>📝</span><b>Note</b><small>Write and save a note</small></button>
+<button type="button" class="material-type{% if initial_type == 'voice' %} active{% endif %}" data-tab="voiceTab"><span>🎙</span><b>Voice note</b><small>Speak and save transcript</small></button>
 </div>
 
-<script>
+<div id="fileTab" class="material-tab"{% if initial_type != 'file' %} hidden{% endif %}>
+<form id="fileForm" method="post" action="/materials/file" enctype="multipart/form-data">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subject_id" class="chosen-subject"><input type="hidden" name="chapter_id" class="chosen-chapter">
+<label class="dropzone"><input type="file" name="file" accept=".pdf,.docx,.pptx,.jpg,.jpeg,.png,.webp,.gif" required><span class="drop-icon">↥</span><b>Choose a file</b><small>PDF · DOCX · PPTX · JPG · JPEG · PNG · WEBP · GIF · up to 25 MB</small></label>
+<button class="primary full" type="submit">Upload material</button>
+</form></div>
+
+<div id="noteTab" class="material-tab"{% if initial_type != 'note' %} hidden{% endif %}>
+<form id="noteForm" method="post" action="/materials/note"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subject_id" class="chosen-subject"><input type="hidden" name="chapter_id" class="chosen-chapter"><label>Note title<input name="title" placeholder="Note title" required></label><label>Note<textarea name="body" rows="10" placeholder="Write your note here..." required></textarea></label><button class="primary full" type="submit">Save note</button></form>
+</div>
+
+<div id="voiceTab" class="material-tab"{% if initial_type != 'voice' %} hidden{% endif %}>
+<div class="voice-inline-head"><div><b id="inlineRecordStatus">Ready to record</b><small id="inlineRecordHint">Choose a location, then start speaking.</small></div><span id="inlineTimer">00:00</span></div>
+<div class="inline-recorder"><button type="button" class="voice-big" id="inlineRecordBtn" aria-label="Start voice note"><span>🎙</span><i class="mic-ring"></i></button><div class="wave" id="inlineWave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+<label>Note title<input id="voiceTitle" value="Voice note" maxlength="120"></label><label>Transcript<textarea id="voiceTranscript" rows="8" placeholder="Your speech will appear here..." required></textarea></label>
+<div class="voice-actions"><button type="button" class="primary" id="saveInlineVoice" disabled>Save voice note</button><button type="button" class="ghost" id="clearInlineVoice">Clear</button></div><div class="voice-support" id="inlineVoiceSupport">Microphone access is required for recording. Chrome and Edge support live speech recognition.</div>
+</div>
+
+<div class="selected-location"><span>Selected location</span><b id="selectedLocation">Choose a subject or chapter</b></div>
+</section></div>
+<form id="inlineVoiceForm" method="post" action="/audio-notes" enctype="multipart/form-data" hidden><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subject_id" id="inlineSubject"><input type="hidden" name="chapter_id" id="inlineChapter"><input type="hidden" name="title" id="inlineTitle"><textarea name="transcript" id="inlineTranscript"></textarea><input type="file" name="audio" id="inlineAudio"></form>
+{% endblock %}
+{% block scripts %}<script>
 const selected=document.getElementById('selectedLocation');
 const radios=document.querySelectorAll('input[name="location"]');
-radios.forEach(r=>r.addEventListener('change',()=>{
-  document.querySelectorAll('.chosen-subject').forEach(x=>x.value=r.dataset.subject);
-  document.querySelectorAll('.chosen-chapter').forEach(x=>x.value=r.dataset.chapter);
-  const label=r.closest('.location-option').querySelector('b').textContent;
-  const sub=r.closest('.location-option').querySelector('small').textContent;
-  selected.textContent=r.dataset.chapter ? label+' · '+sub : label+' · direct';
-}));
-document.querySelectorAll('.material-type').forEach(btn=>btn.addEventListener('click',()=>{
-  document.querySelectorAll('.material-type').forEach(x=>x.classList.remove('active'));btn.classList.add('active');
-  document.querySelectorAll('.material-tab').forEach(x=>x.hidden=true);document.getElementById(btn.dataset.tab).hidden=false;
-}));
-
-['fileForm','noteForm'].forEach(id=>document.getElementById(id)?.addEventListener('submit',e=>{
-  if(!document.querySelector('input[name="location"]:checked')){
-    e.preventDefault();
-    selected.textContent='Please choose a subject or chapter first';
-    selected.classList.add('error');
-  }
-}));
-</script>
-{% endblock %}
+radios.forEach(r=>r.addEventListener('change',()=>{document.querySelectorAll('.chosen-subject').forEach(x=>x.value=r.dataset.subject);document.querySelectorAll('.chosen-chapter').forEach(x=>x.value=r.dataset.chapter);document.getElementById('inlineSubject').value=r.dataset.subject;document.getElementById('inlineChapter').value=r.dataset.chapter;const label=r.closest('.location-option').querySelector('b').textContent;const sub=r.closest('.location-option').querySelector('small').textContent;selected.textContent=r.dataset.chapter?label+' · '+sub:label+' · direct';selected.classList.remove('error');updateVoiceSave();}));
+document.querySelectorAll('.material-type').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.material-type').forEach(x=>x.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.material-tab').forEach(x=>x.hidden=true);document.getElementById(btn.dataset.tab).hidden=false;}));
+['fileForm','noteForm'].forEach(id=>document.getElementById(id)?.addEventListener('submit',e=>{if(!document.querySelector('input[name="location"]:checked')){e.preventDefault();selected.textContent='Choose a subject or chapter first';selected.classList.add('error');}}));
+(function(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;const btn=document.getElementById('inlineRecordBtn'),status=document.getElementById('inlineRecordStatus'),hint=document.getElementById('inlineRecordHint'),timer=document.getElementById('inlineTimer'),box=document.getElementById('voiceTranscript'),save=document.getElementById('saveInlineVoice'),clear=document.getElementById('clearInlineVoice'),wave=document.getElementById('inlineWave'),support=document.getElementById('inlineVoiceSupport');if(!btn)return;let recognition=null,media=null,chunks=[],recording=false,start=0,timerId=null,finalText='';function updateVoiceSave(){save.disabled=!document.querySelector('input[name="location"]:checked')||!box.value.trim();}window.updateVoiceSave=updateVoiceSave;box.addEventListener('input',updateVoiceSave);if(SR){recognition=new SR();recognition.continuous=true;recognition.interimResults=true;recognition.lang=navigator.language||'en-IN';recognition.onstart=()=>{status.textContent='Listening…';hint.textContent='Speak naturally';};recognition.onresult=e=>{let interim='';for(let i=e.resultIndex;i<e.results.length;i++){let t=e.results[i][0].transcript;if(e.results[i].isFinal)finalText+=(finalText?' ':'')+t.trim();else interim+=(interim?' ':'')+t.trim();}box.value=(finalText+(interim?' '+interim:'')).trim();updateVoiceSave();};recognition.onerror=e=>{if(e.error==='not-allowed'){support.textContent='Microphone permission was denied.';support.classList.add('warning');}else if(e.error!=='aborted')support.textContent='Speech recognition: '+e.error;};recognition.onend=()=>{if(recording){try{recognition.start()}catch(e){}}};}else{support.textContent='Live speech recognition is not supported in this browser. You can still record audio and type the transcript.';}
+function tick(){let n=Math.floor((Date.now()-start)/1000);timer.textContent=String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');}
+async function startRec(){if(!document.querySelector('input[name="location"]:checked')){selected.textContent='Choose a subject or chapter first';selected.classList.add('error');return;}recording=true;start=Date.now();timerId=setInterval(tick,250);btn.classList.add('recording');wave.classList.add('live');chunks=[];try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});media=new MediaRecorder(stream);media.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};media.start(250);if(recognition)try{recognition.start()}catch(e){} }catch(e){recording=false;btn.classList.remove('recording');wave.classList.remove('live');clearInterval(timerId);status.textContent='Microphone unavailable';support.textContent='Could not access the microphone. Check browser permissions.';}}
+function stopRec(){recording=false;btn.classList.remove('recording');wave.classList.remove('live');clearInterval(timerId);if(media){media.stop();media.stream.getTracks().forEach(t=>t.stop());}try{recognition?.stop()}catch(e){}status.textContent='Recording complete';hint.textContent='Review the transcript and save it.';updateVoiceSave();}
+btn.addEventListener('click',()=>recording?stopRec():startRec());clear.addEventListener('click',()=>{stopRec();finalText='';box.value='';timer.textContent='00:00';status.textContent='Ready to record';hint.textContent='Choose a location, then start speaking';updateVoiceSave();});save.addEventListener('click',()=>{if(save.disabled)return;document.getElementById('inlineTitle').value=document.getElementById('voiceTitle').value.trim()||'Voice note';document.getElementById('inlineTranscript').value=box.value.trim();const dt=new DataTransfer();if(chunks.length){const blob=new Blob(chunks,{type:media?.mimeType||'audio/webm'});dt.items.add(new File([blob],'voice-note.webm',{type:blob.type}));}else{dt.items.add(new File([box.value],'voice-note.txt',{type:'text/plain'}));}document.getElementById('inlineAudio').files=dt.files;document.getElementById('inlineVoiceForm').submit();});updateVoiceSave();})();
+</script>{% endblock %}

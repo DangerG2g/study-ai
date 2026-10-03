@@ -21,13 +21,12 @@
       <a href="/" class="nav-link">⌂ <span>Dashboard</span></a>
       <a href="/search" class="nav-link">⌕ <span>Search knowledge</span></a>
       <a href="/assistant" class="nav-link">✦ <span>Ask Study</span></a>
-      <a href="/voice-note" class="nav-link">🎙 <span>Voice notes</span></a>
     </nav>
     <div class="side-label">MY SPACE</div>
     <div class="mini-note">Build your own study universe. Add subjects, chapters and learning material.</div>
     <div class="sidebar-bottom">
       <div class="profile-mini"><div class="avatar">{{ user.username[0]|upper }}</div><div><b>{{ user.username }}</b><small>Student</small></div></div>
-      <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="logout">↪ Log out</button></form>
+      <a class="profile-link" href="/change-password">⚙ Change password</a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="logout">↪ Log out</button></form>
     </div>
     {% endif %}
   </aside>
