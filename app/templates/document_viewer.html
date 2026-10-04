@@ -1,13 +1,13 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
 {% block title %}{{ file.original_name }} · Study AI Reader{% endblock %}
 {% block crumb %}{{ 'PPT viewer' if file.file_type in ['ppt','pptx'] else 'Word viewer' }} / {{ file.original_name }}{% endblock %}
 {% block content %}
-<div class="document-reader-head">
+<div class="pdf-reader-head">
   <div>
     <a class="back" href="{% if file.chapter_id %}/chapters/{{ file.chapter_id }}{% else %}/subjects/{{ file.subject_id }}{% endif %}">← Back</a>
-    <div class="eyebrow">{{ 'PPT / PPTX VIEWER' if file.file_type in ['ppt','pptx'] else 'WORD / DOCX VIEWER' }}</div>
+    <div class="eyebrow">{{ 'PPT / PPTX READER' if file.file_type in ['ppt','pptx'] else 'WORD / DOCX READER' }}</div>
     <h1>{{ file.original_name }}</h1>
-    <p>The original visual layout is the main view. Extracted text is optional for searching and copying.</p>
+    <p>View the original visual layout inside Study AI. Extracted text is optional.</p>
   </div>
   <div class="head-actions">
     <a class="ghost" target="_blank" rel="noopener" href="/files/{{ file.id }}/open">Open original ↗</a>
@@ -16,107 +16,108 @@
 </div>
 
 {% if preview_available and preview_page_count > 0 %}
-<div class="office-reader-shell" data-office-pages="{{ preview_page_count }}" data-file-id="{{ file.id }}">
-  <div class="office-reader-toolbar">
-    <div class="office-page-controls">
-      <button class="icon-control" id="officePrev" type="button" aria-label="Previous page">‹</button>
-      <div class="office-page-number"><input id="officePageInput" type="number" min="1" max="{{ preview_page_count }}" value="1" aria-label="Page number"><span>/ {{ preview_page_count }}</span></div>
-      <button class="icon-control" id="officeNext" type="button" aria-label="Next page">›</button>
-    </div>
-    <div class="office-view-label"><b>{{ 'Slide' if file.file_type in ['ppt','pptx'] else 'Page' }} <span id="officePageLabel">1</span></b><span>of {{ preview_page_count }}</span></div>
-    <div class="office-tools">
-      <button class="ghost" type="button" id="officeFit">Fit view</button>
-      <a class="ghost" target="_blank" rel="noopener" href="/files/{{ file.id }}/office-preview">Open visual preview ↗</a>
-      <a class="ghost" href="/files/{{ file.id }}/download">Download</a>
-    </div>
-  </div>
+<div class="reader-toolbar pdf-page-toolbar office-pdf-toolbar">
+  <div><b>Viewing {{ 'slide' if file.file_type in ['ppt','pptx'] else 'page' }} <span id="officeCurrentPage">1</span></b><span>of {{ preview_page_count }} {{ 'slides' if file.file_type in ['ppt','pptx'] else 'pages' }}</span></div>
+  <form class="reader-page-picker" id="officePageForm">
+    <label for="officePage">Go to {{ 'slide' if file.file_type in ['ppt','pptx'] else 'page' }}</label>
+    <select id="officePage" aria-label="Choose page">
+      {% for p in range(1, preview_page_count + 1) %}
+      <option value="{{ p }}">{{ 'Slide' if file.file_type in ['ppt','pptx'] else 'Page' }} {{ p }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <div class="reader-query">{{ 'POWERPOINT' if file.file_type in ['ppt','pptx'] else 'WORD DOCUMENT' }} · Visual reader</div>
+</div>
 
-  <div class="office-reader-grid">
-    <section class="office-main-stage">
-      <div class="office-stage-head"><span>{{ 'PRESENTATION SLIDE' if file.file_type in ['ppt','pptx'] else 'DOCUMENT PAGE' }}</span><span id="officeStagePage">{{ 'SLIDE' if file.file_type in ['ppt','pptx'] else 'PAGE' }} 1 / {{ preview_page_count }}</span></div>
-      <div class="office-stage-scroll" id="officeStageScroll">
-        <img id="officeMainPage" class="office-main-page" src="/files/{{ file.id }}/preview-page/1" alt="{{ file.original_name }} page 1">
-      </div>
-    </section>
+<div class="pdf-original-layout office-pdf-layout">
+  <section class="pdf-original-primary office-original-primary">
+    <div class="reader-panel-head"><span>{{ 'ORIGINAL PRESENTATION SLIDE' if file.file_type in ['ppt','pptx'] else 'ORIGINAL DOCUMENT PAGE' }}</span><span id="officePanelLabel">{{ 'SLIDE' if file.file_type in ['ppt','pptx'] else 'PAGE' }} 1 / {{ preview_page_count }}</span></div>
+    <div class="office-page-stage" id="officePageStage">
+      <img id="officeMainPage" src="/files/{{ file.id }}/preview-page/1" alt="{{ file.original_name }} page 1">
+    </div>
+  </section>
 
-    <aside class="office-page-sidebar">
-      <div class="office-sidebar-head"><b>{{ 'SLIDES' if file.file_type in ['ppt','pptx'] else 'PAGES' }}</b><span>Choose a {{ 'slide' if file.file_type in ['ppt','pptx'] else 'page' }}</span></div>
-      <div class="office-page-list" id="officePageList">
-        {% for p in range(1, preview_page_count + 1) %}
-        <button type="button" class="office-page-chip {% if p == 1 %}selected{% endif %}" data-page="{{ p }}">
-          <img src="/files/{{ file.id }}/preview-page/{{ p }}" loading="lazy" alt="{{ 'Slide' if file.file_type in ['ppt','pptx'] else 'Page' }} {{ p }} thumbnail">
-          <span><b>{{ p }}</b><small>{{ 'Slide' if file.file_type in ['ppt','pptx'] else 'Page' }} {{ p }}</small></span>
-        </button>
-        {% endfor %}
-      </div>
-    </aside>
-  </div>
+  <aside class="pdf-page-sidebar office-page-sidebar">
+    <div class="pdf-page-strip-head"><b>{{ 'PPT PAGES' if file.file_type in ['ppt','pptx'] else 'WORD PAGES' }}</b><span>Choose a {{ 'slide' if file.file_type in ['ppt','pptx'] else 'page' }}</span></div>
+    <div class="pdf-page-list office-page-list" id="officePageList">
+      {% for p in range(1, preview_page_count + 1) %}
+      <button type="button" class="pdf-page-chip office-page-chip {% if p == 1 %}selected{% endif %}" data-page="{{ p }}">
+        <span>{{ p }}</span>
+        <div class="office-thumb-wrap"><img src="/files/{{ file.id }}/preview-page/{{ p }}" loading="lazy" alt="{{ 'Slide' if file.file_type in ['ppt','pptx'] else 'Page' }} {{ p }}"></div>
+      </button>
+      {% endfor %}
+    </div>
+  </aside>
+</div>
+
+<div class="reader-bottom-nav">
+  <button class="ghost" id="officePrev" type="button">← Previous</button>
+  <span>{{ 'Slide' if file.file_type in ['ppt','pptx'] else 'Page' }} <strong id="officeBottomPage">1</strong> of {{ preview_page_count }}</span>
+  <button class="ghost" id="officeNext" type="button">Next →</button>
 </div>
 {% else %}
 <div class="office-fallback">
   <div class="empty-icon">◫</div>
-  <h3>Visual preview is not available</h3>
-  <p>The original Office file is stored safely. You can still use the readable extracted-text view below or open/download the original file.</p>
+  <h3>Visual preview is being prepared</h3>
+  <p>Study AI could not use the visual preview yet. If this is an older upload, open this page again after the latest Render deployment. The original file and extracted text remain available.</p>
+  <div class="head-actions" style="justify-content:center;margin-top:18px">
+    <a class="ghost" target="_blank" rel="noopener" href="/files/{{ file.id }}/open">Open original ↗</a>
+    <a class="ghost" href="/files/{{ file.id }}/download">Download</a>
+  </div>
 </div>
 {% endif %}
 
-<section class="office-text-section">
-  <div class="office-text-head">
-    <div><div class="eyebrow">OPTIONAL</div><h2>Extracted text</h2><p>Use this only when you want to search, copy, or quickly read the document content.</p></div>
-    <div class="office-text-actions"><button class="ghost" type="button" id="toggleOfficeText">Hide text</button><button class="ghost" type="button" id="copyOfficeText">Copy text</button></div>
-  </div>
-  <div id="officeExtractedText" class="document-reader office-readable-text">
+<details class="extracted-text-details office-extracted" {% if not preview_available %}open{% endif %}>
+  <summary><span>Extracted text</span><small>Optional readable/searchable version of this {{ 'presentation' if file.file_type in ['ppt','pptx'] else 'document' }}</small></summary>
+  <div class="extracted-text-body">
     {% if pages %}
       {% for page in pages %}
-      <article class="doc-page" id="office-text-page-{{ page.page_number }}">
+      <article class="doc-page office-text-page" data-text-page="{{ page.page_number }}">
         <div class="page-number">{{ 'SLIDE' if file.file_type in ['ppt','pptx'] else 'DOCUMENT PAGE' }} {{ page.page_number }}</div>
         <div class="doc-page-text">{{ page.text }}</div>
       </article>
       {% endfor %}
     {% else %}
-      <div class="office-fallback"><h3>No readable text was extracted</h3><p>The original file is still available above.</p></div>
+      <div class="reader-empty"><div>▧</div><h3>No readable text was extracted</h3><p>The original Office file is still available above.</p></div>
     {% endif %}
   </div>
-</section>
+</details>
 {% endblock %}
+
 {% block scripts %}
 <script>
 (function(){
-  const shell=document.querySelector('.office-reader-shell');
-  if(!shell) return;
-  const total=Number(shell.dataset.officePages||1), fileId=shell.dataset.fileId;
-  const img=document.getElementById('officeMainPage');
-  const input=document.getElementById('officePageInput');
-  const label=document.getElementById('officePageLabel');
-  const stage=document.getElementById('officeStagePage');
+  const total={{ preview_page_count|int }};
+  const fileId={{ file.id|int }};
+  const main=document.getElementById('officeMainPage');
+  const select=document.getElementById('officePage');
+  const current=document.getElementById('officeCurrentPage');
+  const bottom=document.getElementById('officeBottomPage');
+  const panel=document.getElementById('officePanelLabel');
   const list=document.getElementById('officePageList');
-  const scroll=document.getElementById('officeStageScroll');
-  function setPage(raw){
-    let p=Math.max(1,Math.min(total,Number(raw)||1));
-    input.value=p; label.textContent=p;
-    stage.textContent=({{ 'true' if file.file_type in ['ppt','pptx'] else 'false' }}?'SLIDE ':'PAGE ')+p+' / '+total;
-    img.src='/files/'+fileId+'/preview-page/'+p;
-    img.alt='{{ file.original_name|e }} page '+p;
-    [...list.querySelectorAll('.office-page-chip')].forEach(b=>b.classList.toggle('selected',Number(b.dataset.page)===p));
+  if(!main || !select || !list || !total) return;
+  const isPpt={{ 'true' if file.file_type in ['ppt','pptx'] else 'false' }};
+  function setPage(value){
+    let p=Math.max(1,Math.min(total,parseInt(value,10)||1));
+    select.value=String(p);
+    current.textContent=p;
+    bottom.textContent=p;
+    panel.textContent=(isPpt?'SLIDE ':'PAGE ')+p+' / '+total;
+    main.src='/files/'+fileId+'/preview-page/'+p;
+    main.alt='{{ file.original_name|e }} '+(isPpt?'slide ':'page ')+p;
+    list.querySelectorAll('.office-page-chip').forEach(btn=>btn.classList.toggle('selected',Number(btn.dataset.page)===p));
     const active=list.querySelector('.office-page-chip.selected');
     if(active) active.scrollIntoView({block:'nearest'});
-    scroll.scrollTop=0;
-    window.history.replaceState({},'',location.pathname+'?page='+p);
+    const textPage=document.querySelector('.office-text-page[data-text-page="'+p+'"]');
+    if(textPage && new URLSearchParams(location.search).has('text')) textPage.scrollIntoView({behavior:'smooth',block:'start'});
+    const url=new URL(location.href); url.searchParams.set('page',p); history.replaceState({},'',url);
   }
-  document.getElementById('officePrev').addEventListener('click',()=>setPage(Number(input.value)-1));
-  document.getElementById('officeNext').addEventListener('click',()=>setPage(Number(input.value)+1));
-  input.addEventListener('change',()=>setPage(input.value));
-  input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();setPage(input.value)}});
-  list.querySelectorAll('.office-page-chip').forEach(b=>b.addEventListener('click',()=>setPage(b.dataset.page)));
-  document.getElementById('officeFit').addEventListener('click',()=>{img.classList.toggle('fit-width'); scroll.scrollTop=0;});
-  const params=new URLSearchParams(location.search); if(params.get('page')) setPage(params.get('page'));
-})();
-(function(){
-  const text=document.getElementById('officeExtractedText');
-  const toggle=document.getElementById('toggleOfficeText');
-  if(toggle&&text) toggle.addEventListener('click',()=>{const hidden=text.hasAttribute('hidden'); if(hidden){text.removeAttribute('hidden');toggle.textContent='Hide text'}else{text.setAttribute('hidden','');toggle.textContent='Show extracted text'}});
-  const copy=document.getElementById('copyOfficeText');
-  if(copy&&text) copy.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(text.innerText);copy.textContent='Copied ✓';setTimeout(()=>copy.textContent='Copy text',1200)}catch(e){copy.textContent='Copy failed'}});
+  select.addEventListener('change',()=>setPage(select.value));
+  document.getElementById('officePrev').addEventListener('click',()=>setPage(Number(select.value)-1));
+  document.getElementById('officeNext').addEventListener('click',()=>setPage(Number(select.value)+1));
+  list.querySelectorAll('.office-page-chip').forEach(btn=>btn.addEventListener('click',()=>setPage(btn.dataset.page)));
+  const start=new URLSearchParams(location.search).get('page');
+  if(start) setPage(start);
 })();
 </script>
 {% endblock %}
