@@ -1,13 +1,11 @@
 {% extends "base.html" %}
+{% block title %}{{ file.original_name }} · Study AI Reader{% endblock %}
+{% block crumb %}Document reader / {{ file.original_name }}{% endblock %}
 {% block content %}
-<div class="section-head"><div><div class="eyebrow">DOCUMENT VIEWER</div><h1>{{ file.original_name }}</h1><p class="muted">{{ file.file_type|upper }} · Readable extracted text</p></div><a class="ghost" href="/files/{{ file.id }}/download">Download original</a></div>
+<div class="document-reader-head"><div><div class="eyebrow">DOCUMENT READER</div><h1>{{ file.original_name }}</h1><p>{{ file.file_type|upper }} · Readable extracted content</p></div><div class="head-actions"><a class="ghost" href="/files/{{ file.id }}/download">Download original</a></div></div>
+<div class="document-reader-note">This reader is designed for Word and PowerPoint files because browsers do not reliably display the original Office format inline. The original file is always available with <b>Download original</b>.</div>
 <div class="document-reader">
-  {% if pages %}
-    {% for page in pages %}
-    <section class="document-page"><div class="page-label">{% if file.file_type == 'pptx' %}Slide{% else %}Page{% endif %} {{ page.page_number }}</div><div class="document-text">{{ page.text }}</div></section>
-    {% endfor %}
-  {% else %}
-    <div class="empty-card"><h3>No readable text was extracted</h3><p>You can still download the original {{ file.file_type|upper }} file.</p></div>
-  {% endif %}
+  {% if pages %}{% for page in pages %}<section class="doc-page"><div class="page-number">{% if file.file_type == 'pptx' %}SLIDE{% else %}DOCUMENT TEXT{% endif %} {{ page.page_number }}</div><div class="doc-page-text">{{ page.text }}</div></section>{% endfor %}
+  {% else %}<div class="empty-card"><h3>No readable text was extracted</h3><p>You can still download the original {{ file.file_type|upper }} file.</p></div>{% endif %}
 </div>
 {% endblock %}

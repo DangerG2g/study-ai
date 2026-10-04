@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ file.original_name }} · Study AI{% endblock %}
+{% block crumb %}Image / {{ file.original_name }}{% endblock %}
+{% block content %}
+<div class="document-reader-head"><div><div class="eyebrow">IMAGE VIEWER</div><h1>{{ file.original_name }}</h1><p>Stored in your Study AI library.</p></div><a class="ghost" href="/files/{{ file.id }}/download">Download image</a></div>
+<div class="image-reader-card"><img src="/files/{{ file.id }}/open" alt="{{ file.original_name }}"><div class="image-reader-caption">{{ file.original_name }}</div></div>
+{% endblock %}

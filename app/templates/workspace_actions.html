@@ -1,0 +1,56 @@
+<div id="workspaceNoteModal" class="modal workspace-modal">
+  <div class="modal-box workspace-modal-box">
+    <button class="x" type="button" onclick="closeModal('workspaceNoteModal')">×</button>
+    <div class="workspace-modal-icon note-modal-icon">📝</div>
+    <div class="eyebrow">WRITTEN NOTE</div>
+    <h2>Write a note</h2>
+    <p class="modal-intro">Save this note directly in <strong>{{ subject_name }}</strong>{% if chapter_name %} → <strong>{{ chapter_name }}</strong>{% endif %}.</p>
+    <form method="post" action="/materials/note" class="workspace-note-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="subject_id" value="{{ subject_id }}">
+      <input type="hidden" name="chapter_id" value="{{ chapter_id or '' }}">
+      <label>Title<input name="title" placeholder="e.g. Important formula / definition" required></label>
+      <label>Notes<textarea name="body" class="workspace-note-editor" placeholder="Write your notes here..." required></textarea></label>
+      <div class="workspace-modal-actions"><button type="button" class="ghost" onclick="closeModal('workspaceNoteModal')">Cancel</button><button class="primary" type="submit">Save note</button></div>
+    </form>
+  </div>
+</div>
+
+<div id="workspaceVoiceModal" class="modal workspace-modal">
+  <div class="modal-box workspace-modal-box voice-modal-box">
+    <button class="x" type="button" onclick="closeModal('workspaceVoiceModal')">×</button>
+    <div class="voice-modal-hero"><div class="voice-orb"><span>🎙</span></div><div><div class="eyebrow">VOICE NOTE</div><h2>Speak naturally</h2><p>Audio is saved with the editable transcript.</p></div><div class="voice-modal-timer" id="workspaceVoiceTimer">00:00</div></div>
+    <div class="voice-modal-context">Saving to <strong>{{ subject_name }}</strong>{% if chapter_name %} → <strong>{{ chapter_name }}</strong>{% endif %}</div>
+    <div class="voice-modal-studio">
+      <button type="button" class="voice-record-orb" id="workspaceVoiceRecord"><span>🎙</span><i></i></button>
+      <div class="voice-studio-copy"><b id="workspaceVoiceStatus">Ready to record</b><span id="workspaceVoiceHint">Click the microphone and speak clearly.</span></div>
+      <div class="voice-wave-premium" id="workspaceVoiceWave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div class="voice-language-row"><label>Recognition language<select id="workspaceVoiceLanguage"><option value="en-IN">English (India)</option><option value="en-US">English (US)</option><option value="hi-IN">Hindi (India)</option></select></label><span id="workspaceVoiceSupport">Chrome/Edge live transcription is used. The original audio is saved too.</span></div>
+    <label>Note title<input id="workspaceVoiceTitle" value="Voice note" maxlength="120"></label>
+    <label>Transcript<textarea id="workspaceVoiceTranscript" class="workspace-transcript" placeholder="Your transcript will appear here. You can correct it before saving."></textarea></label>
+    <audio id="workspaceVoicePreview" class="voice-preview" controls hidden></audio>
+    <form id="workspaceVoiceForm" method="post" action="/audio-notes" enctype="multipart/form-data" hidden>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subject_id" value="{{ subject_id }}"><input type="hidden" name="chapter_id" value="{{ chapter_id or '' }}"><input type="hidden" name="title" id="workspaceVoiceFormTitle"><textarea name="transcript" id="workspaceVoiceFormTranscript"></textarea><input type="file" name="audio" id="workspaceVoiceAudio">
+    </form>
+    <div class="workspace-modal-actions"><button type="button" class="ghost" onclick="closeWorkspaceVoice()">Cancel</button><button type="button" class="primary" id="workspaceVoiceSave" disabled>Save voice note</button></div>
+  </div>
+</div>
+<script>
+(function(){
+  const record=document.getElementById('workspaceVoiceRecord'); if(!record) return;
+  const modal=document.getElementById('workspaceVoiceModal'), transcript=document.getElementById('workspaceVoiceTranscript'), save=document.getElementById('workspaceVoiceSave'), audioInput=document.getElementById('workspaceVoiceAudio'), preview=document.getElementById('workspaceVoicePreview'), title=document.getElementById('workspaceVoiceTitle'), timer=document.getElementById('workspaceVoiceTimer'), status=document.getElementById('workspaceVoiceStatus'), hint=document.getElementById('workspaceVoiceHint'), wave=document.getElementById('workspaceVoiceWave'), lang=document.getElementById('workspaceVoiceLanguage'), support=document.getElementById('workspaceVoiceSupport');
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition; let recognition=null, mediaRecorder=null, mediaStream=null, chunks=[], recording=false, started=0, timerId=null, finalText='';
+  function setSave(){save.disabled=!audioInput.files.length || !transcript.value.trim();}
+  function tick(){const s=Math.floor((Date.now()-started)/1000);timer.textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
+  function pickMime(){if(!window.MediaRecorder)return ''; const types=['audio/webm;codecs=opus','audio/webm','audio/mp4']; return types.find(t=>MediaRecorder.isTypeSupported?.(t))||'';}
+  function startRecognition(){if(!SR)return; try{recognition?.stop()}catch(e){} recognition=new SR(); recognition.lang=lang.value; recognition.continuous=true; recognition.interimResults=true; recognition.maxAlternatives=1; recognition.onresult=e=>{let interim=''; for(let i=e.resultIndex;i<e.results.length;i++){const t=(e.results[i][0]?.transcript||'').trim(); if(e.results[i].isFinal && t) finalText+=(finalText?' ':'')+t; else if(t) interim+=(interim?' ':'')+t;} transcript.value=(finalText+(interim?' '+interim:'')).trim(); setSave();}; recognition.onerror=e=>{if(e.error==='not-allowed'){support.textContent='Microphone permission was denied. Allow microphone access and try again.';}else if(e.error!=='aborted'){support.textContent='Live transcription stopped. The audio recording can still be saved and the transcript can be corrected manually.';}}; recognition.onend=()=>{if(recording){try{recognition.start()}catch(e){}}}; recognition.start();}
+  async function start(){if(recording)return; if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){support.textContent='This browser cannot record audio. Please use a recent Chrome or Edge browser.';return;} recording=true; chunks=[]; finalText=transcript.value.trim(); started=Date.now(); timerId=setInterval(tick,250); record.classList.add('recording'); wave.classList.add('live'); status.textContent='Recording…'; hint.textContent='Speak naturally. Your audio is being captured.'; try{mediaStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}); const mime=pickMime(); mediaRecorder=new MediaRecorder(mediaStream,mime?{mimeType:mime}:undefined); mediaRecorder.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data)}; mediaRecorder.onstop=()=>{const type=mediaRecorder.mimeType||'audio/webm'; const blob=new Blob(chunks,{type}); const file=new File([blob],type.includes('mp4')?'voice-note.m4a':'voice-note.webm',{type}); const dt=new DataTransfer();dt.items.add(file);audioInput.files=dt.files; preview.src=URL.createObjectURL(blob); preview.hidden=false; setSave();}; mediaRecorder.start(250); startRecognition();}catch(e){recording=false;clearInterval(timerId);record.classList.remove('recording');wave.classList.remove('live');status.textContent='Microphone unavailable';hint.textContent='Check browser microphone permission and try again.';support.textContent='Could not access the microphone.';mediaStream?.getTracks().forEach(t=>t.stop());}}
+  function stop(){if(!recording)return; recording=false;clearInterval(timerId);try{recognition?.stop()}catch(e){} if(mediaRecorder?.state==='recording')mediaRecorder.stop(); mediaStream?.getTracks().forEach(t=>t.stop());record.classList.remove('recording');wave.classList.remove('live');status.textContent='Recording complete';hint.textContent='Review the transcript and audio, then save.';}
+  record.addEventListener('click',()=>recording?stop():start()); lang.addEventListener('change',()=>{if(recording){finalText=transcript.value.trim();try{recognition?.stop()}catch(e){} setTimeout(startRecognition,120);}}); transcript.addEventListener('input',()=>{finalText=transcript.value.trim();setSave();});
+  save.addEventListener('click',()=>{if(recording)stop(); if(!audioInput.files.length||!transcript.value.trim())return; document.getElementById('workspaceVoiceFormTitle').value=title.value.trim()||'Voice note'; document.getElementById('workspaceVoiceFormTranscript').value=transcript.value.trim(); document.getElementById('workspaceVoiceForm').submit();});
+  window.closeWorkspaceVoice=()=>{stop();try{recognition?.stop()}catch(e){} modal.classList.remove('show');};
+  window.openWorkspaceVoice=()=>{modal.classList.add('show');setTimeout(()=>title.focus(),120);};
+  window.openWorkspaceNote=()=>{const m=document.getElementById('workspaceNoteModal');m.classList.add('show');setTimeout(()=>m.querySelector('input[name="title"]')?.focus(),120);};
+})();
+</script>

@@ -40,7 +40,18 @@
   </main>
 </div>
 <script>
-function speakText(text,button){if(!('speechSynthesis' in window)){alert('Text-to-speech is not supported in this browser.');return;} if(speechSynthesis.speaking && button?.dataset.speaking==='1'){speechSynthesis.cancel(); if(button){button.dataset.speaking='0';button.disabled=false;button.textContent='▶ Listen';} return;} speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(String(text||''));u.rate=.96;u.pitch=1;u.volume=1; const setVoice=()=>{const voices=speechSynthesis.getVoices();if(voices.length)u.voice=voices.find(v=>/^en(-IN|-GB|-US)?$/i.test(v.lang))||voices[0]};setVoice();u.onstart=()=>{if(button){button.dataset.speaking='1';button.disabled=false;button.textContent='■ Stop';}};u.onend=()=>{if(button){button.dataset.speaking='0';button.disabled=false;button.textContent='▶ Listen';}};u.onerror=()=>{if(button){button.dataset.speaking='0';button.disabled=false;button.textContent='▶ Listen';}};speechSynthesis.onvoiceschanged=setVoice;speechSynthesis.speak(u);setTimeout(()=>{try{speechSynthesis.resume()}catch(e){}},100)}
+function speakText(text,button){
+ if(!('speechSynthesis' in window)){alert('Text-to-speech is not supported in this browser.');return;}
+ if(window.__studySpeech?.active && button?.dataset.speaking==='1'){window.__studySpeech.stop();return;}
+ window.__studySpeech?.stop();
+ const clean=String(text||'').replace(/\s+/g,' ').trim(); if(!clean)return;
+ const chunks=[]; for(let i=0;i<clean.length;i+=180){let end=Math.min(clean.length,i+180);if(end<clean.length){const cut=clean.lastIndexOf(' ',end);if(cut>i+80)end=cut;}chunks.push(clean.slice(i,end));}
+ const state={active:true,index:0,stop(){state.active=false;speechSynthesis.cancel();if(button){button.dataset.speaking='0';button.disabled=false;button.textContent='▶ Listen';}}}; window.__studySpeech=state;
+ const voices=()=>speechSynthesis.getVoices();
+ function next(){if(!state.active||state.index>=chunks.length){state.stop();return;} const u=new SpeechSynthesisUtterance(chunks[state.index++]);u.rate=.96;u.pitch=1;u.volume=1;const vs=voices();u.voice=vs.find(v=>/^en-IN$/i.test(v.lang))||vs.find(v=>/^en(-GB|-US)?$/i.test(v.lang))||vs[0];u.onstart=()=>{if(button){button.dataset.speaking='1';button.disabled=false;button.textContent='■ Stop';}};u.onend=()=>next();u.onerror=()=>state.stop();speechSynthesis.speak(u);setTimeout(()=>{try{speechSynthesis.resume()}catch(e){}},80);}
+ speechSynthesis.cancel(); next();
+}
+
 function stopSpeaking(){if('speechSynthesis' in window)speechSynthesis.cancel()}
 (function(){
   const bg=document.querySelector('.ambient'); if(!bg) return;
