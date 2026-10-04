@@ -275,8 +275,19 @@ def delete_pdf(user_id, pdf_id):
 
 
 def add_audio_note(user_id, subject_id, chapter_id, title, transcript, data, mime_type='audio/webm'):
+    # Keep the note row and its audio row in one PostgreSQL transaction so a
+    # voice note is either saved completely or not saved at all.
     with connect() as conn:
-        note = add_note(user_id, subject_id, chapter_id, title, transcript)
+        if chapter_id is None:
+            note = conn.execute(
+                'INSERT INTO notes(user_id,subject_id,chapter_id,title,body) SELECT %s,id,NULL,%s,%s FROM subjects WHERE id=%s AND user_id=%s RETURNING id',
+                (user_id,title,transcript,subject_id,user_id)
+            ).fetchone()
+        else:
+            note = conn.execute(
+                'INSERT INTO notes(user_id,subject_id,chapter_id,title,body) SELECT %s,s.id,c.id,%s,%s FROM chapters c JOIN subjects s ON s.id=c.subject_id WHERE c.id=%s AND c.user_id=%s AND s.user_id=%s AND s.id=%s RETURNING id',
+                (user_id,title,transcript,chapter_id,user_id,user_id,subject_id)
+            ).fetchone()
         if not note:
             return None
         row = conn.execute(

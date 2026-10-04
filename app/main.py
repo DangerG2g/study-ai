@@ -352,17 +352,36 @@ async def upload_material(request: Request, subject_id: int = Form(...), chapter
         if not c or c['subject_id'] != subject_id: raise HTTPException(400,'Invalid chapter.')
     name=Path(file.filename or '').name
     ext=Path(name).suffix.lower()
-    allowed={'.pdf':'pdf','.docx':'docx','.pptx':'pptx','.jpg':'jpg','.jpeg':'jpeg','.png':'png','.webp':'webp','.gif':'gif'}
-    if ext not in allowed: raise HTTPException(400,'Supported files: PDF, DOCX, PPTX, JPG, JPEG, PNG, WEBP, and GIF.')
+    allowed={'.pdf':'pdf','.doc':'doc','.docx':'docx','.ppt':'ppt','.pptx':'pptx','.jpg':'jpg','.jpeg':'jpeg','.png':'png','.webp':'webp','.gif':'gif'}
+    if ext not in allowed: raise HTTPException(400,'Supported files: PDF, DOC/DOCX, PPT/PPTX, JPG, JPEG, PNG, WEBP, and GIF.')
     data=await file.read()
     if len(data)>25*1024*1024: raise HTTPException(413,'File is too large. Maximum size is 25 MB.')
     pages=[]
+    extraction_warning=''
     if ext in {'.pdf','.docx','.pptx'}:
-        temp=BASE_DIR/'uploads'/f'{secrets.token_hex(12)}{ext}'; temp.parent.mkdir(exist_ok=True); temp.write_bytes(data)
-        try: pages=extract_document(temp)
-        except Exception as e: raise HTTPException(400,f'Could not read this file: {e}')
-        finally: temp.unlink(missing_ok=True)
-    db.add_pdf(user['id'],subject_id,chapter,name,data,len(pages) if pages else 1,[(i,t) for i,t in pages if t],allowed[ext])
+        temp=BASE_DIR/'uploads'/f'{secrets.token_hex(12)}{ext}'
+        temp.parent.mkdir(exist_ok=True)
+        temp.write_bytes(data)
+        try:
+            pages=extract_document(temp)
+        except Exception as e:
+            # Never lose a user's original Office/PDF file just because text
+            # extraction failed. Store the original and let the reader show
+            # a clear fallback/download option.
+            pages=[]
+            extraction_warning=str(e)[:240]
+        finally:
+            temp.unlink(missing_ok=True)
+    actual_page_count=len(pages) if pages else 1
+    if ext == '.pdf' and not pages:
+        try:
+            from pypdf import PdfReader
+            actual_page_count=len(PdfReader(__import__('io').BytesIO(data)).pages) or 1
+        except Exception:
+            actual_page_count=1
+    file_id=db.add_pdf(user['id'],subject_id,chapter,name,data,actual_page_count,[(i,t) for i,t in pages if t],allowed[ext])
+    if not file_id:
+        raise HTTPException(500,'The file could not be saved. Please try again.')
     return RedirectResponse(f'/chapters/{chapter}' if chapter else f'/subjects/{subject_id}',303)
 
 @app.post('/chapters/{chapter_id}/pdfs')
@@ -425,12 +444,33 @@ async def save_audio_note(request: Request, subject_id: int = Form(...), chapter
     if chapter:
         c=db.get_chapter(user['id'],chapter)
         if not c or c['subject_id'] != subject_id: raise HTTPException(400,'Invalid chapter.')
-    if not transcript.strip(): raise HTTPException(400,'No transcript was captured.')
+    clean_transcript=transcript.strip()
+    if not clean_transcript: raise HTTPException(400,'Please record something or enter the transcript before saving.')
     data=await audio.read()
+    if not data: raise HTTPException(400,'The audio recording is empty. Record again before saving.')
     if len(data)>15*1024*1024: raise HTTPException(413,'Audio is too large. Maximum size is 15 MB.')
     mime=audio.content_type or 'audio/webm'
-    db.add_audio_note(user['id'],subject_id,chapter,title.strip() or 'Voice note',transcript.strip(),data,mime)
+    audio_id=db.add_audio_note(user['id'],subject_id,chapter,title.strip() or 'Voice note',clean_transcript,data,mime)
+    if not audio_id: raise HTTPException(500,'The voice note could not be saved. Please try again.')
     return RedirectResponse(f'/chapters/{chapter}' if chapter else f'/subjects/{subject_id}',303)
+
+@app.post('/audio-notes/{audio_id}/edit')
+def edit_audio_note(request: Request, audio_id: int, title: str = Form(...), transcript: str = Form(...), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    a=db.get_audio_note(user['id'],audio_id)
+    if not a: raise HTTPException(404)
+    if not title.strip() or not transcript.strip(): raise HTTPException(400,'Title and transcript cannot be empty.')
+    db.update_note(user['id'],a['note_id'],title.strip(),transcript.strip())
+    return RedirectResponse(f'/chapters/{a["chapter_id"]}' if a['chapter_id'] else f'/subjects/{a["subject_id"]}',303)
+
+@app.post('/audio-notes/{audio_id}/delete')
+def delete_audio_note(request: Request, audio_id: int, csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    a=db.get_audio_note(user['id'],audio_id)
+    if not a: raise HTTPException(404)
+    location=f'/chapters/{a["chapter_id"]}' if a['chapter_id'] else f'/subjects/{a["subject_id"]}'
+    db.delete_note(user['id'],a['note_id'])
+    return RedirectResponse(location,303)
 
 @app.get('/audio-notes/{audio_id}/play')
 def play_audio_note(request: Request, audio_id: int):
@@ -449,7 +489,7 @@ def open_audio_note(request: Request, audio_id: int):
 def open_file(request: Request, file_id: int):
     user=require_user(request); p=db.get_pdf(user['id'],file_id,True)
     if not p: raise HTTPException(404)
-    mime={'pdf':'application/pdf','docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}.get(p['file_type'],'application/octet-stream')
+    mime={'pdf':'application/pdf','doc':'application/msword','docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','ppt':'application/vnd.ms-powerpoint','pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}.get(p['file_type'],'application/octet-stream')
     # Browsers do not natively render DOCX/PPTX. Keep this endpoint for PDFs/images,
     # while the UI uses /view for Office files and /download for the original.
     disposition='inline' if p['file_type'] in {'pdf','jpg','jpeg','png','webp','gif'} else 'attachment'
@@ -459,7 +499,7 @@ def open_file(request: Request, file_id: int):
 def download_file(request: Request, file_id: int):
     user=require_user(request); p=db.get_pdf(user['id'],file_id,True)
     if not p: raise HTTPException(404)
-    mime={'pdf':'application/pdf','docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}.get(p['file_type'],'application/octet-stream')
+    mime={'pdf':'application/pdf','doc':'application/msword','docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','ppt':'application/vnd.ms-powerpoint','pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}.get(p['file_type'],'application/octet-stream')
     return Response(content=bytes(p['data']), media_type=mime, headers={'Content-Disposition': f"attachment; filename=\"{p['original_name'].replace(chr(34), '')}\""})
 
 @app.get('/files/{file_id}/view', response_class=HTMLResponse)
@@ -485,8 +525,10 @@ def pdf_viewer(request: Request, pdf_id: int, page: int = 1, q: str = ''):
     pdf=db.get_pdf(user['id'], pdf_id)
     if not pdf: raise HTTPException(404)
     pages=db.get_pdf_pages(user['id'], pdf_id)
-    target=next((p for p in pages if int(p['page_number']) == int(page)), pages[0] if pages else None)
-    return render(request,'pdf_viewer.html',{'pdf':pdf,'pages':pages,'target':target,'query':q,'page_number':int(page)})
+    max_page=int(pdf['page_count'] or 1)
+    safe_page=max(1,min(int(page),max_page))
+    target=next((p for p in pages if int(p['page_number']) == safe_page), None)
+    return render(request,'pdf_viewer.html',{'pdf':pdf,'pages':pages,'target':target,'query':q,'page_number':safe_page})
 
 @app.get('/pdfs/{pdf_id}/text',response_class=HTMLResponse)
 def pdf_text(request: Request,pdf_id:int):
