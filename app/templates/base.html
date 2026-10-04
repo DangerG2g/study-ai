@@ -34,7 +34,7 @@
   <main class="main">
     <header class="topbar">
       <div class="crumb">{% block crumb %}Workspace{% endblock %}</div>
-      {% if user %}<form class="top-search" action="/search" method="get"><span>⌕</span><input id="globalSearchInput" name="q" placeholder="Search knowledge" value="{{ query|default('') }}"><button type="button" class="voice-search-btn" id="voiceSearchBtn" title="Search by voice" aria-label="Search by voice"><span>🎙</span><i></i></button></form><div class="voice-search-status" id="voiceSearchStatus" aria-live="polite"></div><div class="top-avatar">{{ user.username[0]|upper }}</div>{% endif %}
+      {% if user %}<form class="top-search" id="globalSearchForm" action="/search" method="get"><button type="submit" class="search-submit" title="Search" aria-label="Search"><span>⌕</span></button><input id="globalSearchInput" name="q" placeholder="Search knowledge" value="{{ query|default('') }}"><button type="button" class="voice-search-btn" id="voiceSearchBtn" title="Search by voice" aria-label="Search by voice"><span>🎙</span><i></i></button></form><div class="voice-search-status" id="voiceSearchStatus" aria-live="polite"></div><div class="top-avatar">{{ user.username[0]|upper }}</div>{% endif %}
     </header>
     <section class="content">{% block content %}{% endblock %}</section>
   </main>
@@ -66,15 +66,39 @@ document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.
 </script>
 <script>
 (function(){
-  const btn=document.getElementById('voiceSearchBtn'), input=document.getElementById('globalSearchInput'), status=document.getElementById('voiceSearchStatus');
-  if(!btn||!input)return; const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  const btn=document.getElementById('voiceSearchBtn'), input=document.getElementById('globalSearchInput'), form=document.getElementById('globalSearchForm'), status=document.getElementById('voiceSearchStatus');
+  if(!btn||!input||!form)return;
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){btn.classList.add('unsupported');btn.title='Voice search is not supported in this browser';return;}
-  const r=new SR(); r.lang=navigator.language||'en-IN'; r.interimResults=true; r.maxAlternatives=1;
-  r.onstart=()=>{btn.classList.add('recording');btn.querySelector('span').textContent='●';if(status)status.textContent='Listening…';};
-  r.onend=()=>{btn.classList.remove('recording');btn.querySelector('span').textContent='🎙';if(status)setTimeout(()=>status.textContent='',1500);};
-  r.onerror=e=>{btn.classList.remove('recording');btn.querySelector('span').textContent='🎙';if(status)status.textContent=e.error==='not-allowed'?'Microphone permission denied':'Voice search stopped';};
-  r.onresult=e=>{let text='';for(let i=e.resultIndex;i<e.results.length;i++)text+=e.results[i][0].transcript;if(text){input.value=text.trim();if(status)status.textContent='Searching…';}};
-  btn.addEventListener('click',()=>{try{r.start()}catch(e){}});
+  const r=new SR();
+  r.lang=navigator.language||'en-IN'; r.interimResults=true; r.maxAlternatives=1; r.continuous=false;
+  let listening=false, finalText='';
+  function setIdle(){listening=false;btn.classList.remove('recording');btn.querySelector('span').textContent='🎙';btn.setAttribute('aria-pressed','false');}
+  r.onstart=()=>{listening=true;finalText='';btn.classList.add('recording');btn.querySelector('span').textContent='■';btn.setAttribute('aria-pressed','true');if(status)status.textContent='Listening… click again to stop';};
+  r.onresult=e=>{let interim='';for(let i=e.resultIndex;i<e.results.length;i++){const t=(e.results[i][0]?.transcript||'').trim();if(e.results[i].isFinal&&t)finalText+=(finalText?' ':'')+t;else if(t)interim+=(interim?' ':'')+t;}input.value=(finalText+(interim?' '+interim:'')).trim();};
+  r.onerror=e=>{setIdle();if(status)status.textContent=e.error==='not-allowed'?'Microphone permission denied':'Voice search stopped';setTimeout(()=>{if(status)status.textContent=''},1800);};
+  r.onend=()=>{const q=input.value.trim();setIdle();if(q){if(status)status.textContent='Searching…';form.requestSubmit();}else if(status){status.textContent='';}};
+  btn.addEventListener('click',()=>{if(listening){try{r.stop()}catch(e){}return;}try{r.start()}catch(e){}});
+})();
+</script>
+
+<script>
+(function(){
+  function esc(t){return String(t||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+  function fillRead(title,body,label){
+    const m=document.getElementById('readContentModal'); if(!m)return;
+    m.querySelector('[data-read-label]').textContent=label||'NOTE';
+    m.querySelector('[data-read-title]').textContent=title||'Untitled';
+    m.querySelector('[data-read-body]').textContent=body||'';
+    openModal('readContentModal');
+  }
+  document.addEventListener('click',e=>{
+    const read=e.target.closest('[data-read-note]'); if(read){fillRead(read.dataset.title,read.dataset.body,'WRITTEN NOTE');return;}
+    const readVoice=e.target.closest('[data-read-voice]'); if(readVoice){fillRead(readVoice.dataset.title,readVoice.dataset.body,'VOICE TRANSCRIPT');return;}
+    const edit=e.target.closest('[data-edit-note]'); if(edit){const f=document.getElementById('editForm');if(!f)return;f.action='/notes/'+edit.dataset.id+'/edit';document.getElementById('editTitle').value=edit.dataset.title||'';document.getElementById('editBody').value=edit.dataset.body||'';openModal('editModal');return;}
+    const editVoice=e.target.closest('[data-edit-voice]'); if(editVoice){const f=document.getElementById('audioEditForm');if(!f)return;f.action='/audio-notes/'+editVoice.dataset.id+'/edit';document.getElementById('audioEditTitle').value=editVoice.dataset.title||'';document.getElementById('audioEditTranscript').value=editVoice.dataset.body||'';openModal('audioEditModal');return;}
+    const listen=e.target.closest('[data-speak-text]'); if(listen){speakText(listen.dataset.speakText||'',listen);return;}
+  });
 })();
 </script>
 {% block scripts %}{% endblock %}
