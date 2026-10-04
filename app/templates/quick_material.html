@@ -1,0 +1,66 @@
+<div id="quickMaterialModal" class="modal quick-material-modal">
+  <div class="modal-box quick-material-box">
+    <button class="x" type="button" onclick="closeModal('quickMaterialModal')">×</button>
+    <div class="eyebrow">ADD TO {% if chapter_id %}CHAPTER{% else %}SUBJECT{% endif %}</div>
+    <h2>Add material</h2>
+    <p class="muted quick-context">{{ subject_name }}{% if chapter_name %} → {{ chapter_name }}{% endif %}</p>
+    <div class="quick-material-choice-grid">
+      <label class="quick-material-choice" for="quickFileInput">
+        <span>📎</span><div><b>Upload file</b><small>Choose PDF, Word, PowerPoint or image</small></div>
+      </label>
+      <button type="button" class="quick-material-choice" onclick="openQuickNote()">
+        <span>📝</span><div><b>Write note</b><small>Open a large writing area</small></div>
+      </button>
+      <button type="button" class="quick-material-choice" onclick="openQuickVoice()">
+        <span>🎙</span><div><b>Voice note</b><small>Record and transcribe</small></div>
+      </button>
+    </div>
+    <form id="quickFileForm" method="post" action="/materials/file" enctype="multipart/form-data" hidden>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="subject_id" value="{{ subject_id }}">
+      <input type="hidden" name="chapter_id" value="{{ chapter_id or '' }}">
+      <input id="quickFileInput" type="file" name="file" accept=".pdf,.docx,.pptx,.jpg,.jpeg,.png,.webp,.gif">
+    </form>
+    <form id="quickNoteForm" method="post" action="/materials/note" class="quick-note-form" hidden>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="subject_id" value="{{ subject_id }}">
+      <input type="hidden" name="chapter_id" value="{{ chapter_id or '' }}">
+      <label>Note title<input name="title" placeholder="e.g. Important formula" required></label>
+      <label>Write your notes<textarea name="body" class="large-note-editor quick-note-editor" rows="14" placeholder="Write your notes here..." required></textarea></label>
+      <div class="quick-form-actions"><button type="button" class="ghost" onclick="showQuickChoices()">Back</button><button class="primary" type="submit">Save note</button></div>
+    </form>
+    <div id="quickVoicePanel" class="quick-voice-panel" hidden>
+      <div class="voice-inline-head"><div><b id="quickVoiceStatus">Ready to record</b><small id="quickVoiceHint">Start speaking when you're ready.</small></div><span id="quickVoiceTimer">00:00</span></div>
+      <div class="inline-recorder"><button type="button" class="voice-big" id="quickVoiceRecord" aria-label="Start voice note"><span>🎙</span><i class="mic-ring"></i></button><div class="wave" id="quickVoiceWave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+      <label>Note title<input id="quickVoiceTitle" value="Voice note" maxlength="120"></label>
+      <label>Transcript<textarea id="quickVoiceTranscript" class="transcript-box" rows="8" placeholder="Your speech will appear here..."></textarea></label>
+      <div class="quick-form-actions"><button type="button" class="ghost" onclick="showQuickChoices()">Back</button><button type="button" class="primary" id="quickVoiceSave" disabled>Save voice note</button></div>
+      <div class="voice-support" id="quickVoiceSupport">Chrome and Edge support live speech recognition. You can also type the transcript manually.</div>
+    </div>
+    <form id="quickVoiceForm" method="post" action="/audio-notes" enctype="multipart/form-data" hidden>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subject_id" value="{{ subject_id }}"><input type="hidden" name="chapter_id" value="{{ chapter_id or '' }}"><input type="hidden" name="title" id="quickVoiceFormTitle"><textarea name="transcript" id="quickVoiceFormTranscript"></textarea><input type="file" name="audio" id="quickVoiceAudio">
+    </form>
+  </div>
+</div>
+<script>
+(function(){
+  const modal=document.getElementById('quickMaterialModal');
+  const choices=modal?.querySelector('.quick-material-choice-grid'), note=modal?.querySelector('.quick-note-form'), voice=modal?.querySelector('#quickVoicePanel'), file=document.getElementById('quickFileInput'), fileForm=document.getElementById('quickFileForm');
+  window.openQuickMaterial=()=>openModal('quickMaterialModal');
+  window.showQuickChoices=()=>{choices.hidden=false;note.hidden=true;voice.hidden=true;};
+  window.openQuickNote=()=>{choices.hidden=true;note.hidden=false;voice.hidden=true;note.querySelector('input[name="title"]').focus();};
+  window.openQuickVoice=()=>{choices.hidden=true;note.hidden=true;voice.hidden=false;};
+  file?.addEventListener('change',()=>{if(file.files.length)fileForm.submit();});
+  const record=document.getElementById('quickVoiceRecord'), transcript=document.getElementById('quickVoiceTranscript'), save=document.getElementById('quickVoiceSave'), clearState=()=>{};
+  if(!record)return;
+  const status=document.getElementById('quickVoiceStatus'),hint=document.getElementById('quickVoiceHint'),timer=document.getElementById('quickVoiceTimer'),wave=document.getElementById('quickVoiceWave');
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition; let recognition=null,recording=false,started=0,timerId=null,chunks=[],media=null,finalText='';
+  if(!SR)hint.textContent='Live speech recognition is unavailable. You can type the transcript manually.';
+  function updateTimer(){const sec=Math.floor((Date.now()-started)/1000);timer.textContent=String(Math.floor(sec/60)).padStart(2,'0')+':'+String(sec%60).padStart(2,'0');}
+  async function startMedia(){try{media=await navigator.mediaDevices.getUserMedia({audio:true});const mr=new MediaRecorder(media);chunks=[];mr.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};mr.onstop=()=>{const blob=new Blob(chunks,{type:mr.mimeType||'audio/webm'});const dt=new DataTransfer();dt.items.add(new File([blob],'voice-note.webm',{type:blob.type}));document.getElementById('quickVoiceAudio').files=dt.files;save.disabled=!transcript.value.trim();};mr.start();record.mediaRecorder=mr;return true}catch(e){hint.textContent='Microphone permission was denied or unavailable.';return false}}
+  function startRecognition(){if(!SR)return;recognition=new SR();recognition.lang=navigator.language||'en-IN';recognition.continuous=true;recognition.interimResults=true;recognition.onresult=e=>{let interim='';for(let i=e.resultIndex;i<e.results.length;i++){const t=e.results[i][0].transcript;if(e.results[i].isFinal)finalText+=(finalText?' ':'')+t;else interim+=t;}transcript.value=(finalText+(interim?' '+interim:'')).trim();save.disabled=!transcript.value.trim()||!record.mediaRecorder;};recognition.onerror=()=>{hint.textContent='Speech recognition stopped. You can continue typing.'};recognition.start();}
+  record.addEventListener('click',async()=>{if(recording){record.mediaRecorder?.stop();media?.getTracks().forEach(t=>t.stop());recognition?.stop();recording=false;clearInterval(timerId);record.classList.remove('recording');wave.classList.remove('live');status.textContent='Recording ready';hint.textContent='Review the transcript, then save.';save.disabled=!transcript.value.trim();return;} finalText=transcript.value.trim();started=Date.now();timerId=setInterval(updateTimer,500);status.textContent='Recording…';hint.textContent='Speak naturally.';recording=true;record.classList.add('recording');wave.classList.add('live');if(await startMedia())startRecognition();else{recording=false;clearInterval(timerId);record.classList.remove('recording');wave.classList.remove('live');}});
+  transcript.addEventListener('input',()=>{save.disabled=!transcript.value.trim()||!document.getElementById('quickVoiceAudio').files.length;});
+  save.addEventListener('click',()=>{if(!transcript.value.trim())return;document.getElementById('quickVoiceFormTitle').value=document.getElementById('quickVoiceTitle').value||'Voice note';document.getElementById('quickVoiceFormTranscript').value=transcript.value;document.getElementById('quickVoiceForm').submit();});
+})();
+</script>

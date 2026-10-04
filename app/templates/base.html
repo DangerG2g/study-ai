@@ -18,10 +18,10 @@
     <a class="brand" href="/"><span class="brand-mark">✦</span><span>Study<span>AI</span></span></a>
     {% if user %}
     <nav>
-      <a href="/" class="nav-link">⌂ <span>Dashboard</span></a>
-      <a href="/search" class="nav-link">⌕ <span>Search knowledge</span></a>
-      <a href="/add-material" class="nav-link nav-add-material">＋ <span>Add Material</span></a>
-      <a href="/assistant" class="nav-link">✦ <span>Ask Study</span></a>
+      <a href="/" class="nav-link{% if request.url.path == '/' %} active{% endif %}">⌂ <span>Dashboard</span></a>
+      <a href="/search" class="nav-link{% if request.url.path.startswith('/search') %} active{% endif %}">⌕ <span>Search knowledge</span></a>
+      <a href="/add-material" class="nav-link{% if request.url.path.startswith('/add-material') %} active{% endif %}">＋ <span>Add Material</span></a>
+      <a href="/assistant" class="nav-link{% if request.url.path.startswith('/assistant') %} active{% endif %}">✦ <span>Ask Study</span></a>
     </nav>
     <div class="side-label">MY SPACE</div>
     <div class="mini-note">Build your own study universe. Add subjects, chapters and learning material.</div>
@@ -40,7 +40,7 @@
   </main>
 </div>
 <script>
-function speakText(text,button){if(!('speechSynthesis' in window)){alert('Text-to-speech is not supported in this browser.');return;} speechSynthesis.cancel(); if(button){button.disabled=true;button.textContent='■ Speaking…';} const u=new SpeechSynthesisUtterance(String(text||''));u.rate=.96;u.pitch=1;u.volume=1;u.onend=()=>{if(button){button.disabled=false;button.textContent='▶ Listen';}};u.onerror=()=>{if(button){button.disabled=false;button.textContent='▶ Listen';}}; const voices=speechSynthesis.getVoices(); if(voices.length) u.voice=voices.find(v=>/^en(-IN|-GB|-US)?$/i.test(v.lang))||voices[0]; speechSynthesis.speak(u); setTimeout(()=>{if(speechSynthesis.speaking===false && button){button.disabled=false;button.textContent='▶ Listen';}},500)}
+function speakText(text,button){if(!('speechSynthesis' in window)){alert('Text-to-speech is not supported in this browser.');return;} if(speechSynthesis.speaking && button?.dataset.speaking==='1'){speechSynthesis.cancel(); if(button){button.dataset.speaking='0';button.disabled=false;button.textContent='▶ Listen';} return;} speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(String(text||''));u.rate=.96;u.pitch=1;u.volume=1; const setVoice=()=>{const voices=speechSynthesis.getVoices();if(voices.length)u.voice=voices.find(v=>/^en(-IN|-GB|-US)?$/i.test(v.lang))||voices[0]};setVoice();u.onstart=()=>{if(button){button.dataset.speaking='1';button.disabled=false;button.textContent='■ Stop';}};u.onend=()=>{if(button){button.dataset.speaking='0';button.disabled=false;button.textContent='▶ Listen';}};u.onerror=()=>{if(button){button.dataset.speaking='0';button.disabled=false;button.textContent='▶ Listen';}};speechSynthesis.onvoiceschanged=setVoice;speechSynthesis.speak(u);setTimeout(()=>{try{speechSynthesis.resume()}catch(e){}},100)}
 function stopSpeaking(){if('speechSynthesis' in window)speechSynthesis.cancel()}
 (function(){
   const bg=document.querySelector('.ambient'); if(!bg) return;
