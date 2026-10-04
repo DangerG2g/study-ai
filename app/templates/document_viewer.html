@@ -2,10 +2,12 @@
 {% block title %}{{ file.original_name }} · Study AI Reader{% endblock %}
 {% block crumb %}Document reader / {{ file.original_name }}{% endblock %}
 {% block content %}
-<div class="document-reader-head"><div><div class="eyebrow">DOCUMENT READER</div><h1>{{ file.original_name }}</h1><p>{{ file.file_type|upper }} · Readable extracted content</p></div><div class="head-actions"><a class="ghost" href="/files/{{ file.id }}/download">Download original</a></div></div>
-<div class="document-reader-note">This reader is designed for Word and PowerPoint files because browsers do not reliably display the original Office format inline. The original file is always available with <b>Download original</b>.</div>
-<div class="document-reader">
-  {% if pages %}{% for page in pages %}<section class="doc-page"><div class="page-number">{% if file.file_type == 'pptx' %}SLIDE{% else %}DOCUMENT TEXT{% endif %} {{ page.page_number }}</div><div class="doc-page-text">{{ page.text }}</div></section>{% endfor %}
-  {% else %}<div class="empty-card"><h3>No readable text was extracted</h3><p>You can still download the original {{ file.file_type|upper }} file.</p></div>{% endif %}
-</div>
+<div class="document-reader-head"><div><a class="back" href="{% if file.chapter_id %}/chapters/{{ file.chapter_id }}{% else %}/subjects/{{ file.subject_id }}{% endif %}">← Back</a><div class="eyebrow">{{ file.file_type|upper }} READER</div><h1>{{ file.original_name }}</h1><p>{% if file.file_type in ['ppt','pptx'] %}One card per slide · extracted text when available{% elif file.file_type in ['doc','docx'] %}Readable document text when available{% else %}File preview{% endif %}</p></div><div class="head-actions"><a class="ghost" target="_blank" rel="noopener" href="/files/{{ file.id }}/open">Open original ↗</a><a class="ghost" href="/files/{{ file.id }}/download">Download</a></div></div>
+<div class="document-reader-note">The original Office file is preserved. Because Chrome does not reliably render DOCX/PPTX itself, Study AI opens a clean in-site reader with extracted text; the original can always be opened/downloaded separately.</div>
+{% if pages %}
+<div class="document-page-toolbar"><b>{{ pages|length }} {% if file.file_type == 'pptx' %}slides{% else %}document section{% if pages|length != 1 %}s{% endif %}{% endif %}</b><span>Use the browser page search (Ctrl+F) or scroll through the reader.</span></div>
+<div class="document-reader">{% for page in pages %}<section class="doc-page" id="page-{{ page.page_number }}"><div class="page-number">{% if file.file_type in ['ppt','pptx'] %}SLIDE{% else %}DOCUMENT TEXT{% endif %} {{ page.page_number }}</div><div class="doc-page-text">{{ page.text }}</div></section>{% endfor %}</div>
+{% else %}
+<div class="reader-empty office-empty"><div>□</div><h3>No readable text was extracted</h3><p>The original {{ file.file_type|upper }} file was saved successfully. Use <b>Open original</b> or <b>Download</b> above to open it in an Office-compatible application.</p></div>
+{% endif %}
 {% endblock %}

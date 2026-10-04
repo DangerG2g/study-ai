@@ -34,7 +34,7 @@
   <main class="main">
     <header class="topbar">
       <div class="crumb">{% block crumb %}Workspace{% endblock %}</div>
-      {% if user %}<form class="top-search" action="/search" method="get"><span>⌕</span><input id="globalSearchInput" name="q" placeholder="Search notes, PDFs, topics..." value="{{ query|default('') }}"><button type="button" class="voice-search-btn" id="voiceSearchBtn" title="Search by voice" aria-label="Search by voice"><span>🎙</span><i></i></button></form><div class="voice-search-status" id="voiceSearchStatus" aria-live="polite"></div><div class="top-avatar">{{ user.username[0]|upper }}</div>{% endif %}
+      {% if user %}<form class="top-search" action="/search" method="get"><span>⌕</span><input id="globalSearchInput" name="q" placeholder="Search knowledge" value="{{ query|default('') }}"><button type="button" class="voice-search-btn" id="voiceSearchBtn" title="Search by voice" aria-label="Search by voice"><span>🎙</span><i></i></button></form><div class="voice-search-status" id="voiceSearchStatus" aria-live="polite"></div><div class="top-avatar">{{ user.username[0]|upper }}</div>{% endif %}
     </header>
     <section class="content">{% block content %}{% endblock %}</section>
   </main>
