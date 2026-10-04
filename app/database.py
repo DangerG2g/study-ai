@@ -307,43 +307,61 @@ def make_snippet(text, words, width=110):
 
 
 def search(user_id, query, limit=50):
-    words=[w.strip() for w in query.split() if w.strip()][:8]
-    if not words:
+    import re
+    raw=(query or '').strip()
+    if not raw:
         return {'notes':[],'pages':[],'subjects':[],'chapters':[]}
+    # Search by useful words rather than requiring every word to exist on the
+    # same page. Ranking decides which result is strongest.
+    words=[]
+    for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9_'-]*", raw.lower()):
+        if len(w) > 1 and w not in {'the','and','for','with','from','into','about','this','that','what','where','when','how','are','was','were','has','have','can','you','your','in','of','to','a','an','on','is','it','my'}:
+            if w not in words: words.append(w)
+    words=words[:10] or [raw.lower()[:80]]
     patterns=[f'%{w.replace("%", "\\%").replace("_", "\\_")}%' for w in words]
-    note_where=' AND '.join('(n.title ILIKE %s OR n.body ILIKE %s)' for _ in words)
+    note_where=' OR '.join('(n.title ILIKE %s OR n.body ILIKE %s)' for _ in words)
     note_params=[p for p in patterns for _ in range(2)]
-    page_where=' AND '.join('pg.text ILIKE %s' for _ in words)
-    subject_where=' AND '.join('s.name ILIKE %s' for _ in words)
-    chapter_where=' AND '.join('(c.name ILIKE %s OR s.name ILIKE %s)' for _ in words)
+    page_where=' OR '.join('(pg.text ILIKE %s OR p.original_name ILIKE %s)' for _ in words)
+    page_params=[p for p in patterns for _ in range(2)]
+    subject_where=' OR '.join('s.name ILIKE %s' for _ in words)
+    chapter_where=' OR '.join('(c.name ILIKE %s OR s.name ILIKE %s)' for _ in words)
     chapter_params=[p for p in patterns for _ in range(2)]
+    phrase=f'%{raw.replace("%", "\\%").replace("_", "\\_")}%' 
     with connect() as conn:
         subject_rows=conn.execute(
-            f'SELECT s.id,s.name FROM subjects s WHERE s.user_id=%s AND {subject_where} ORDER BY s.name COLLATE "C" LIMIT %s',
+            f'SELECT s.id,s.name FROM subjects s WHERE s.user_id=%s AND ({subject_where}) ORDER BY s.name COLLATE "C" LIMIT %s',
             [user_id,*patterns,limit]).fetchall()
         chapter_rows=conn.execute(
-            f'SELECT c.id,c.name,c.subject_id,s.name AS subject_name FROM chapters c JOIN subjects s ON s.id=c.subject_id WHERE c.user_id=%s AND s.user_id=%s AND {chapter_where} ORDER BY s.name COLLATE "C",c.name COLLATE "C" LIMIT %s',
+            f'SELECT c.id,c.name,c.subject_id,s.name AS subject_name FROM chapters c JOIN subjects s ON s.id=c.subject_id WHERE c.user_id=%s AND s.user_id=%s AND ({chapter_where}) ORDER BY s.name COLLATE "C",c.name COLLATE "C" LIMIT %s',
             [user_id,user_id,*chapter_params,limit]).fetchall()
         notes_rows=conn.execute(
-            f'SELECT n.id,n.title,n.body,n.subject_id,n.chapter_id,c.name AS chapter_name,s.name AS subject_name FROM notes n JOIN subjects s ON s.id=n.subject_id LEFT JOIN chapters c ON c.id=n.chapter_id WHERE n.user_id=%s AND s.user_id=%s AND {note_where} ORDER BY n.id DESC LIMIT %s',
-            [user_id,user_id,*note_params,limit]).fetchall()
+            f"""SELECT n.id,n.title,n.body,n.subject_id,n.chapter_id,c.name AS chapter_name,s.name AS subject_name
+                FROM notes n JOIN subjects s ON s.id=n.subject_id LEFT JOIN chapters c ON c.id=n.chapter_id
+                WHERE n.user_id=%s AND s.user_id=%s AND ({note_where})
+                ORDER BY CASE WHEN n.title ILIKE %s THEN 0 ELSE 1 END, n.id DESC LIMIT %s""",
+            [user_id,user_id,*note_params,phrase,limit]).fetchall()
         page_rows=conn.execute(
-            f'SELECT pg.page_number,pg.text,p.id AS pdf_id,p.original_name,p.page_count,p.file_type,p.subject_id,p.chapter_id,c.name AS chapter_name,s.name AS subject_name FROM pdf_pages pg JOIN pdf_files p ON p.id=pg.pdf_id JOIN subjects s ON s.id=p.subject_id LEFT JOIN chapters c ON c.id=p.chapter_id WHERE pg.user_id=%s AND p.user_id=%s AND s.user_id=%s AND {page_where}',
-            [user_id,user_id,user_id,*patterns]).fetchall()
+            f"""SELECT pg.page_number,pg.text,p.id AS pdf_id,p.original_name,p.page_count,p.file_type,p.subject_id,p.chapter_id,c.name AS chapter_name,s.name AS subject_name
+                FROM pdf_pages pg JOIN pdf_files p ON p.id=pg.pdf_id JOIN subjects s ON s.id=p.subject_id LEFT JOIN chapters c ON c.id=p.chapter_id
+                WHERE pg.user_id=%s AND p.user_id=%s AND s.user_id=%s AND ({page_where})""",
+            [user_id,user_id,user_id,*page_params]).fetchall()
+    def score_text(text):
+        low=(text or '').lower()
+        score=sum(low.count(w) for w in words)
+        if raw.lower() in low: score += 8
+        return score
     page_results=[]
     for r in page_rows:
         text=r['text'] or ''
-        lower=text.lower()
-        score=sum(lower.count(w.lower()) for w in words)
-        item=dict(r,score=score,snippet=make_snippet(text,words))
-        page_results.append(item)
-    page_results.sort(key=lambda x:(-x['score'], -int(x['page_number'] == 1), int(x['page_number'])))
-    return {
-        'subjects':subject_rows,
-        'chapters':chapter_rows,
-        'notes':[dict(r,snippet=make_snippet(r['body'],words)) for r in notes_rows],
-        'pages':page_results[:limit]
-    }
+        score=score_text(text) + (score_text(r['original_name']) * 2)
+        page_results.append(dict(r,score=score,snippet=make_snippet(text,words)))
+    page_results.sort(key=lambda x:(-x['score'], int(x['page_number'])))
+    note_results=[]
+    for r in notes_rows:
+        text=f"{r['title']} {r['body']}"
+        note_results.append(dict(r,score=score_text(text),snippet=make_snippet(r['body'],words)))
+    note_results.sort(key=lambda x:(-x['score'], -x['id']))
+    return {'subjects':subject_rows,'chapters':chapter_rows,'notes':note_results[:limit],'pages':page_results[:limit]}
 
 def search_locations(user_id, query='', limit=30):
     q=(query or '').strip()

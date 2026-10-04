@@ -10,50 +10,54 @@ except Exception:
 
 from pypdf import PdfReader
 
+try:
+    import pdfplumber
+except Exception:
+    pdfplumber = None
+
 
 def _text_quality(text: str):
+    import re
     text = text or ''
-    bad = text.count('�') + text.count('?')
+    suspicious = text.count('�') + len(re.findall(r'\?{2,}', text)) + text.count('\x00')
+    printable = sum(ch.isprintable() for ch in text)
     letters = sum(ch.isalpha() for ch in text)
     words = len(text.split())
-    # Prefer text with fewer suspicious replacement/question marks, then more words.
-    return (-(bad / max(1, len(text))), words, letters)
+    return (-(suspicious / max(1, len(text))), printable / max(1, len(text)), words, letters)
 
 
 def extract_pdf_pages(path: Path):
-    # PDFs can contain broken/embedded font encodings. Different extractors can
-    # produce very different results for the same page, so compare both when
-    # possible instead of accepting the first non-empty result.
-    fitz_pages = []
-    pypdf_pages = []
+    # Use several independent extractors. PDF font maps are notoriously
+    # inconsistent; choosing the cleanest page text prevents many stray ?/�
+    # characters from becoming part of search results.
+    fitz_pages=[]; pypdf_pages=[]; plumber_pages=[]
     if fitz is not None:
         try:
-            doc = fitz.open(str(path))
-            fitz_pages = [(i + 1, (page.get_text("text", sort=True) or "").strip()) for i, page in enumerate(doc)]
+            doc=fitz.open(str(path))
+            fitz_pages=[(i+1,(page.get_text("text",sort=True) or "").strip()) for i,page in enumerate(doc)]
             doc.close()
         except Exception:
-            fitz_pages = []
+            fitz_pages=[]
     try:
-        reader = PdfReader(str(path))
-        pypdf_pages = [(i + 1, (page.extract_text() or "").strip()) for i, page in enumerate(reader.pages)]
+        reader=PdfReader(str(path))
+        pypdf_pages=[(i+1,(page.extract_text() or "").strip()) for i,page in enumerate(reader.pages)]
     except Exception:
-        pypdf_pages = []
-    count=max(len(fitz_pages), len(pypdf_pages))
+        pypdf_pages=[]
+    if pdfplumber is not None:
+        try:
+            with pdfplumber.open(str(path)) as pdf:
+                plumber_pages=[(i+1,(page.extract_text(x_tolerance=2,y_tolerance=3) or "").strip()) for i,page in enumerate(pdf.pages)]
+        except Exception:
+            plumber_pages=[]
+    count=max(len(fitz_pages),len(pypdf_pages),len(plumber_pages))
     chosen=[]
     for i in range(count):
-        a=fitz_pages[i][1] if i < len(fitz_pages) else ''
-        b=pypdf_pages[i][1] if i < len(pypdf_pages) else ''
-        if not a:
-            text=b
-        elif not b:
-            text=a
-        else:
-            # When one extractor has a broken font map, its output often contains
-            # many '?' or replacement characters. Pick the cleaner representation.
-            text=max((a,b), key=_text_quality)
+        candidates=[]
+        for pages in (fitz_pages,pypdf_pages,plumber_pages):
+            if i<len(pages) and pages[i][1]: candidates.append(pages[i][1])
+        text=max(candidates,key=_text_quality) if candidates else ''
         chosen.append((i+1,text))
     return chosen
-
 
 def extract_document(path: Path):
     ext = path.suffix.lower()

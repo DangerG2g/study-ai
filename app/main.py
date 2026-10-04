@@ -286,12 +286,11 @@ def remove_note(request: Request, note_id: int, csrf_token: str = Form(...)):
     db.delete_note(user['id'],note_id)
     return RedirectResponse(f'/chapters/{n["chapter_id"]}' if n['chapter_id'] else f'/subjects/{n["subject_id"]}',303)
 
-@app.get('/voice-note', response_class=HTMLResponse)
+@app.get('/voice-note')
 def voice_note_page(request: Request):
-    user=require_user(request)
-    subjects=db.dashboard_data(user['id'])[0]
-    chapters=db.list_all_chapters(user['id'])
-    return render(request,'voice_note.html',{'subjects':subjects,'chapters':chapters})
+    require_user(request)
+    # Legacy route: voice notes now live inside Add Material or the current subject/chapter.
+    return RedirectResponse('/add-material?type=voice',303)
 
 @app.get('/add-material', response_class=HTMLResponse)
 def add_material_page(request: Request, q: str = '', type: str = 'file', subject_id: int = 0, chapter_id: int = 0, chapter_q: str = ''):
@@ -387,13 +386,34 @@ def assistant_ask(request: Request, question: str = Form(...), csrf_token: str =
     if not q:
         return render(request,'assistant.html',{'query':'','results':None,'answer_parts':[],'source_count':0,'error':'Please enter a question.'},400)
     results=db.search(user['id'],q,limit=12)
-    answer_parts=[]
-    if results:
-        for r in results.get('notes',[])[:2]:
-            answer_parts.append(f"{r['title']}: {r['body'][:700]}")
-        for r in results.get('pages',[])[:2]:
-            answer_parts.append(f"{r['original_name']} — page {r['page_number']}: {r['text'][:700]}")
-    source_count=(len(results.get('notes',[]))+len(results.get('pages',[]))) if results else 0
+    # Ask Study is retrieval-first: pull the strongest matching sentences from
+    # the user's own notes/files instead of pretending a generic web answer is
+    # coming from an AI model. This gives a useful answer while staying grounded.
+    terms=[w.lower() for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9_'-]*",q) if len(w)>1]
+    candidates=[]
+    for r in (results or {}).get('notes',[])[:8]:
+        text=r['body'] or ''
+        for sentence in re.split(r'(?<=[.!?])\s+|\n+', text):
+            sentence=sentence.strip()
+            if sentence and any(t in sentence.lower() for t in terms):
+                score=sum(sentence.lower().count(t) for t in terms)
+                candidates.append((score, sentence, f"Note: {r['title']}"))
+    for r in (results or {}).get('pages',[])[:8]:
+        text=r['text'] or ''
+        for sentence in re.split(r'(?<=[.!?])\s+|\n+', text):
+            sentence=sentence.strip()
+            if sentence and any(t in sentence.lower() for t in terms):
+                score=sum(sentence.lower().count(t) for t in terms)
+                candidates.append((score, sentence, f"{r['original_name']} · page {r['page_number']}"))
+    candidates.sort(key=lambda x:-x[0])
+    answer_parts=[]; seen=set()
+    for _,sentence,source in candidates:
+        key=re.sub(r'\s+',' ',sentence.lower())
+        if key in seen: continue
+        seen.add(key)
+        answer_parts.append({'text':sentence[:900],'source':source})
+        if len(answer_parts)>=5: break
+    source_count=(len((results or {}).get('notes',[]))+len((results or {}).get('pages',[]))) if results else 0
     return render(request,'assistant.html',{'query':q,'results':results,'answer_parts':answer_parts,'source_count':source_count})
 
 @app.post('/audio-notes')
@@ -449,7 +469,7 @@ def view_file(request: Request, file_id: int):
     if p['file_type'] == 'pdf':
         return RedirectResponse(f'/pdfs/{file_id}/viewer', 303)
     if p['file_type'] in {'jpg','jpeg','png','webp','gif'}:
-        return RedirectResponse(f'/files/{file_id}/open', 303)
+        return render(request,'image_viewer.html',{'file':p})
     pages=db.get_pdf_pages(user['id'],file_id)
     return render(request,'document_viewer.html',{'file':p,'pages':pages})
 
