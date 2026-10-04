@@ -533,6 +533,33 @@ def download_file(request: Request, file_id: int):
     mime={'pdf':'application/pdf','doc':'application/msword','docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','ppt':'application/vnd.ms-powerpoint','pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}.get(p['file_type'],'application/octet-stream')
     return Response(content=bytes(p['data']), media_type=mime, headers={'Content-Disposition': f"attachment; filename=\"{p['original_name'].replace(chr(34), '')}\""})
 
+@app.get('/files/{file_id}/preview-page/{page_number}')
+def office_preview_page(request: Request, file_id: int, page_number: int):
+    user=require_user(request)
+    p=db.get_pdf(user['id'],file_id,True)
+    if not p: raise HTTPException(404)
+    if p['file_type'] not in {'doc','docx','ppt','pptx'}:
+        raise HTTPException(400,'Preview pages are available for Word and PowerPoint files.')
+    cached=db.get_file_preview(user['id'],file_id)
+    preview=bytes(cached['preview_data']) if cached and cached['preview_data'] else None
+    count=int(cached['preview_page_count'] or 0) if cached else 0
+    if not preview:
+        preview,count=build_office_preview(bytes(p['data']), '.'+p['file_type'], p['original_name'])
+        if preview:
+            db.save_file_preview(user['id'],file_id,preview,count)
+    if not preview or page_number < 1 or page_number > count:
+        raise HTTPException(404,'Preview page not available.')
+    try:
+        import fitz
+        doc=fitz.open(stream=preview,filetype='pdf')
+        page=doc.load_page(page_number-1)
+        pix=page.get_pixmap(matrix=fitz.Matrix(1.15,1.15), alpha=False)
+        png=pix.tobytes('png')
+        doc.close()
+        return Response(content=png, media_type='image/png', headers={'Cache-Control':'private, max-age=300'})
+    except Exception:
+        raise HTTPException(503,'Unable to render this preview page.')
+
 @app.get('/files/{file_id}/office-preview')
 def office_preview(request: Request, file_id: int):
     user=require_user(request)
