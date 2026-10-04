@@ -27,31 +27,78 @@ app.mount('/static', StaticFiles(directory=BASE_DIR / 'app' / 'static'), name='s
 templates = Jinja2Templates(directory=BASE_DIR / 'app' / 'templates')
 
 def build_office_preview(data: bytes, ext: str, original_name: str):
-    """Convert DOC/DOCX/PPT/PPTX to a PDF preview when LibreOffice is available.
-    The original Office file remains the user's source file.
+    """Convert a Word/PowerPoint file to a cached PDF preview.
+
+    Render installs LibreOffice during the build. The conversion is also
+    attempted lazily when an older file has no cached preview yet. A private
+    LibreOffice profile is used so headless conversion works reliably on
+    container/server environments.
     """
-    office = shutil.which('libreoffice') or shutil.which('soffice')
-    if not office or ext not in {'.doc', '.docx', '.ppt', '.pptx'}:
+    ext = (ext or '').lower()
+    if ext not in {'.doc', '.docx', '.ppt', '.pptx'}:
         return None, 0
+
+    office = next((p for p in (
+        shutil.which('libreoffice'),
+        shutil.which('soffice'),
+        '/usr/bin/libreoffice',
+        '/usr/bin/soffice',
+    ) if p and Path(p).exists()), None)
+    if not office:
+        return None, 0
+
+    safe_stem = Path(original_name or 'document').stem or 'document'
     with tempfile.TemporaryDirectory(prefix='study-office-') as td:
-        src = Path(td) / (Path(original_name).stem + ext)
-        out = Path(td) / 'preview'
+        root = Path(td)
+        src = root / (safe_stem + ext)
+        out = root / 'preview'
+        profile = root / 'lo-profile'
         out.mkdir()
+        profile.mkdir()
         src.write_bytes(data)
-        try:
-            proc = subprocess.run([office, '--headless', '--convert-to', 'pdf', '--outdir', str(out), str(src)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=45)
-        except Exception:
-            return None, 0
-        pdf = out / (src.stem + '.pdf')
-        if proc.returncode != 0 or not pdf.exists():
-            return None, 0
-        preview = pdf.read_bytes()
-        try:
-            from pypdf import PdfReader
-            count = len(PdfReader(__import__('io').BytesIO(preview)).pages) or 1
-        except Exception:
-            count = 1
-        return preview, count
+
+        env = os.environ.copy()
+        env.setdefault('HOME', str(root / 'home'))
+        Path(env['HOME']).mkdir(parents=True, exist_ok=True)
+        env['TMPDIR'] = str(root)
+
+        commands = [
+            [office, '--headless', '--nologo', '--nodefault', '--nofirststartwizard',
+             f'-env:UserInstallation=file://{profile}', '--convert-to', 'pdf',
+             '--outdir', str(out), str(src)],
+        ]
+        if ext in {'.ppt', '.pptx'}:
+            commands.insert(0, [office, '--headless', '--nologo', '--nodefault', '--nofirststartwizard',
+                                f'-env:UserInstallation=file://{profile}', '--convert-to',
+                                'pdf:impress_pdf_Export', '--outdir', str(out), str(src)])
+        elif ext in {'.doc', '.docx'}:
+            commands.insert(0, [office, '--headless', '--nologo', '--nodefault', '--nofirststartwizard',
+                                f'-env:UserInstallation=file://{profile}', '--convert-to',
+                                'pdf:writer_pdf_Export', '--outdir', str(out), str(src)])
+
+        for cmd in commands:
+            try:
+                proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                      timeout=90, env=env, check=False)
+            except (OSError, subprocess.SubprocessError):
+                continue
+            pdf = out / (src.stem + '.pdf')
+            if proc.returncode == 0 and pdf.exists() and pdf.stat().st_size > 100:
+                preview = pdf.read_bytes()
+                try:
+                    import fitz
+                    doc = fitz.open(stream=preview, filetype='pdf')
+                    count = doc.page_count
+                    doc.close()
+                except Exception:
+                    try:
+                        from pypdf import PdfReader
+                        count = len(PdfReader(__import__('io').BytesIO(preview)).pages)
+                    except Exception:
+                        count = 0
+                if count > 0:
+                    return preview, count
+    return None, 0
 
 
 def hash_password(password, salt=None):
@@ -588,6 +635,20 @@ def view_file(request: Request, file_id: int):
         return render(request,'image_viewer.html',{'file':p})
     pages=db.get_pdf_pages(user['id'],file_id)
     preview=db.get_file_preview(user['id'],file_id) if p['file_type'] in {'doc','docx','ppt','pptx'} else None
+
+    # Older Office uploads may have been created before LibreOffice was
+    # installed on Render, so they can have an empty preview cache. Generate
+    # the preview lazily the first time the reader is opened.
+    if p['file_type'] in {'doc','docx','ppt','pptx'} and not (preview and preview['preview_data']):
+        full=db.get_pdf(user['id'],file_id,True)
+        if full and full.get('data'):
+            preview_data, preview_page_count = build_office_preview(
+                bytes(full['data']), '.' + p['file_type'], p['original_name']
+            )
+            if preview_data and preview_page_count:
+                db.save_file_preview(user['id'],file_id,preview_data,preview_page_count)
+                preview={'preview_data':preview_data,'preview_page_count':preview_page_count}
+
     return render(request,'document_viewer.html',{'file':p,'pages':pages,'preview_available':bool(preview and preview['preview_data']),'preview_page_count':int((preview or {}).get('preview_page_count') or 0)})
 
 @app.get('/pdfs/{pdf_id}/open')
