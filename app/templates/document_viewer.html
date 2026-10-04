@@ -2,12 +2,23 @@
 {% block title %}{{ file.original_name }} · Study AI Reader{% endblock %}
 {% block crumb %}Document reader / {{ file.original_name }}{% endblock %}
 {% block content %}
-<div class="document-reader-head"><div><a class="back" href="{% if file.chapter_id %}/chapters/{{ file.chapter_id }}{% else %}/subjects/{{ file.subject_id }}{% endif %}">← Back</a><div class="eyebrow">{{ file.file_type|upper }} READER</div><h1>{{ file.original_name }}</h1><p>{% if file.file_type in ['ppt','pptx'] %}One card per slide · extracted text when available{% elif file.file_type in ['doc','docx'] %}Readable document text when available{% else %}File preview{% endif %}</p></div><div class="head-actions"><a class="ghost" target="_blank" rel="noopener" href="/files/{{ file.id }}/open">Open original ↗</a><a class="ghost" href="/files/{{ file.id }}/download">Download</a></div></div>
-<div class="document-reader-note">The original Office file is preserved. Because Chrome does not reliably render DOCX/PPTX itself, Study AI opens a clean in-site reader with extracted text; the original can always be opened/downloaded separately.</div>
-{% if pages %}
-<div class="document-page-toolbar"><b>{{ pages|length }} {% if file.file_type == 'pptx' %}slides{% else %}document section{% if pages|length != 1 %}s{% endif %}{% endif %}</b><span>Use the browser page search (Ctrl+F) or scroll through the reader.</span></div>
-<div class="document-reader">{% for page in pages %}<section class="doc-page" id="page-{{ page.page_number }}"><div class="page-number">{% if file.file_type in ['ppt','pptx'] %}SLIDE{% else %}DOCUMENT TEXT{% endif %} {{ page.page_number }}</div><div class="doc-page-text">{{ page.text }}</div></section>{% endfor %}</div>
-{% else %}
-<div class="reader-empty office-empty"><div>□</div><h3>No readable text was extracted</h3><p>The original {{ file.file_type|upper }} file was saved successfully. Use <b>Open original</b> or <b>Download</b> above to open it in an Office-compatible application.</p></div>
-{% endif %}
+<div class="document-reader-head"><div><a class="back" href="{% if file.chapter_id %}/chapters/{{ file.chapter_id }}{% else %}/subjects/{{ file.subject_id }}{% endif %}">← Back</a><div class="eyebrow">{{ file.file_type|upper }} READER</div><h1>{{ file.original_name }}</h1><p>View the original appearance when available, or switch to extracted text.</p></div><div class="head-actions"><a class="ghost" target="_blank" rel="noopener" href="/files/{{ file.id }}/open">Open original ↗</a><a class="ghost" href="/files/{{ file.id }}/download">Download</a></div></div>
+<div class="document-viewer-switch" role="tablist"><button class="document-tab active" type="button" data-tab="visual">Visual view</button><button class="document-tab" type="button" data-tab="text">Extracted text</button></div>
+
+<section id="documentVisual" class="document-tab-panel active">
+  {% if preview_available %}
+  <div class="office-visual-toolbar"><div><b>Original visual layout</b><span>{% if file.file_type in ['ppt','pptx'] %}Slides are shown in their original presentation layout.{% else %}Word document pages are rendered for reading.{% endif %}</span></div><a class="ghost" target="_blank" rel="noopener" href="/files/{{ file.id }}/office-preview">Open visual preview ↗</a></div>
+  <div class="office-preview-frame"><iframe title="Original document preview" src="/files/{{ file.id }}/office-preview#page=1"></iframe></div>
+  {% else %}
+  <div class="office-fallback"><div class="empty-icon">◫</div><h3>Visual preview is not available</h3><p>The original Office file is still safely stored. Use <b>Open original</b> or <b>Download</b> above. If your browser has an Office viewer installed, it can open the original in a new tab.</p></div>
+  {% endif %}
+</section>
+
+<section id="documentText" class="document-tab-panel">
+  <div class="document-reader-note"><b>Extracted text</b> is optional. This is a searchable text representation of the uploaded file; the visual view above remains the primary view.</div>
+  {% if pages %}<div class="document-page-toolbar"><b>{{ pages|length }} extracted section{% if pages|length != 1 %}s{% endif %}</b><span>Use this view when you want to search or copy the text.</span></div><div class="document-reader">{% for page in pages %}<section class="doc-page" id="page-{{ page.page_number }}"><div class="page-number">{% if file.file_type in ['ppt','pptx'] %}SLIDE{% else %}DOCUMENT TEXT{% endif %} {{ page.page_number }}</div><div class="doc-page-text">{{ page.text }}</div></section>{% endfor %}</div>{% else %}<div class="office-fallback"><h3>No readable text was extracted</h3><p>The original file is still available above.</p></div>{% endif %}
+</section>
 {% endblock %}
+{% block scripts %}<script>
+(function(){const tabs=[...document.querySelectorAll('.document-tab')];const panels={visual:document.getElementById('documentVisual'),text:document.getElementById('documentText')};tabs.forEach(t=>t.addEventListener('click',()=>{tabs.forEach(x=>x.classList.toggle('active',x===t));Object.entries(panels).forEach(([k,p])=>p?.classList.toggle('active',k===t.dataset.tab));}));})();
+</script>{% endblock %}
