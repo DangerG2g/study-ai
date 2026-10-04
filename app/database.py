@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS pdf_files (
     page_count INTEGER NOT NULL DEFAULT 0,
     data BYTEA NOT NULL,
     file_type VARCHAR(10) NOT NULL DEFAULT 'pdf',
+    preview_data BYTEA NULL,
+    preview_page_count INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS pdf_pages (
@@ -74,6 +76,8 @@ CREATE TABLE IF NOT EXISTS audio_notes (
 );
 CREATE INDEX IF NOT EXISTS idx_audio_notes_user ON audio_notes(user_id);
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS file_type VARCHAR(10) NOT NULL DEFAULT 'pdf';
+ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS preview_data BYTEA NULL;
+ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS preview_page_count INTEGER NOT NULL DEFAULT 0;
 """
 
 @contextmanager
@@ -239,12 +243,12 @@ def delete_note(user_id, note_id):
         conn.execute('DELETE FROM notes WHERE id=%s AND user_id=%s', (note_id,user_id))
 
 
-def add_pdf(user_id, subject_id, chapter_id, original_name, data, page_count, pages, file_type='pdf'):
+def add_pdf(user_id, subject_id, chapter_id, original_name, data, page_count, pages, file_type='pdf', preview_data=None, preview_page_count=0):
     with connect() as conn:
         if chapter_id is None:
-            row = conn.execute('INSERT INTO pdf_files(user_id,subject_id,chapter_id,original_name,page_count,data,file_type) SELECT %s,id,NULL,%s,%s,%s,%s FROM subjects WHERE id=%s AND user_id=%s RETURNING id', (user_id,original_name,page_count,data,file_type,subject_id,user_id)).fetchone()
+            row = conn.execute('INSERT INTO pdf_files(user_id,subject_id,chapter_id,original_name,page_count,data,file_type,preview_data,preview_page_count) SELECT %s,id,NULL,%s,%s,%s,%s,%s,%s FROM subjects WHERE id=%s AND user_id=%s RETURNING id', (user_id,original_name,page_count,data,file_type,preview_data,preview_page_count,subject_id,user_id)).fetchone()
         else:
-            row = conn.execute('INSERT INTO pdf_files(user_id,subject_id,chapter_id,original_name,page_count,data,file_type) SELECT %s,s.id,c.id,%s,%s,%s,%s FROM chapters c JOIN subjects s ON s.id=c.subject_id WHERE c.id=%s AND c.user_id=%s AND s.user_id=%s AND s.id=%s RETURNING id', (user_id,original_name,page_count,data,file_type,chapter_id,user_id,user_id,subject_id)).fetchone()
+            row = conn.execute('INSERT INTO pdf_files(user_id,subject_id,chapter_id,original_name,page_count,data,file_type,preview_data,preview_page_count) SELECT %s,s.id,c.id,%s,%s,%s,%s,%s,%s FROM chapters c JOIN subjects s ON s.id=c.subject_id WHERE c.id=%s AND c.user_id=%s AND s.user_id=%s AND s.id=%s RETURNING id', (user_id,original_name,page_count,data,file_type,preview_data,preview_page_count,chapter_id,user_id,user_id,subject_id)).fetchone()
         if not row:
             return None
         pdf_id = row['id']
@@ -263,6 +267,14 @@ def get_pdf(user_id, pdf_id, include_data=False):
         cols='p.id,p.original_name,p.page_count,p.file_type,p.subject_id,p.chapter_id,p.user_id' + (',p.data' if include_data else '')
         return conn.execute(f'''SELECT {cols} FROM pdf_files p WHERE p.id=%s AND p.user_id=%s''', (pdf_id,user_id)).fetchone()
 
+
+def get_file_preview(user_id, pdf_id):
+    with connect() as conn:
+        return conn.execute('SELECT preview_data,preview_page_count,file_type,original_name FROM pdf_files WHERE id=%s AND user_id=%s', (pdf_id,user_id)).fetchone()
+
+def save_file_preview(user_id, pdf_id, preview_data, preview_page_count):
+    with connect() as conn:
+        conn.execute('UPDATE pdf_files SET preview_data=%s, preview_page_count=%s WHERE id=%s AND user_id=%s', (preview_data,preview_page_count,pdf_id,user_id))
 
 def get_pdf_pages(user_id, pdf_id):
     with connect() as conn:

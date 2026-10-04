@@ -1,6 +1,6 @@
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-import base64, hashlib, hmac, os, re, secrets
+import base64, hashlib, hmac, os, re, secrets, shutil, subprocess, tempfile
 
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, Response
@@ -25,6 +25,33 @@ PASSWORD_MIN = 8
 app = FastAPI(title='Study AI', version='2.0')
 app.mount('/static', StaticFiles(directory=BASE_DIR / 'app' / 'static'), name='static')
 templates = Jinja2Templates(directory=BASE_DIR / 'app' / 'templates')
+
+def build_office_preview(data: bytes, ext: str, original_name: str):
+    """Convert DOC/DOCX/PPT/PPTX to a PDF preview when LibreOffice is available.
+    The original Office file remains the user's source file.
+    """
+    office = shutil.which('libreoffice') or shutil.which('soffice')
+    if not office or ext not in {'.doc', '.docx', '.ppt', '.pptx'}:
+        return None, 0
+    with tempfile.TemporaryDirectory(prefix='study-office-') as td:
+        src = Path(td) / (Path(original_name).stem + ext)
+        out = Path(td) / 'preview'
+        out.mkdir()
+        src.write_bytes(data)
+        try:
+            proc = subprocess.run([office, '--headless', '--convert-to', 'pdf', '--outdir', str(out), str(src)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=45)
+        except Exception:
+            return None, 0
+        pdf = out / (src.stem + '.pdf')
+        if proc.returncode != 0 or not pdf.exists():
+            return None, 0
+        preview = pdf.read_bytes()
+        try:
+            from pypdf import PdfReader
+            count = len(PdfReader(__import__('io').BytesIO(preview)).pages) or 1
+        except Exception:
+            count = 1
+        return preview, count
 
 
 def hash_password(password, salt=None):
@@ -372,6 +399,10 @@ async def upload_material(request: Request, subject_id: int = Form(...), chapter
             extraction_warning=str(e)[:240]
         finally:
             temp.unlink(missing_ok=True)
+    preview_data=None
+    preview_page_count=0
+    if ext in {'.doc','.docx','.ppt','.pptx'}:
+        preview_data, preview_page_count = build_office_preview(data, ext, name)
     actual_page_count=len(pages) if pages else 1
     if ext == '.pdf' and not pages:
         try:
@@ -379,7 +410,7 @@ async def upload_material(request: Request, subject_id: int = Form(...), chapter
             actual_page_count=len(PdfReader(__import__('io').BytesIO(data)).pages) or 1
         except Exception:
             actual_page_count=1
-    file_id=db.add_pdf(user['id'],subject_id,chapter,name,data,actual_page_count,[(i,t) for i,t in pages if t],allowed[ext])
+    file_id=db.add_pdf(user['id'],subject_id,chapter,name,data,actual_page_count,[(i,t) for i,t in pages if t],allowed[ext],preview_data,preview_page_count)
     if not file_id:
         raise HTTPException(500,'The file could not be saved. Please try again.')
     return RedirectResponse(f'/chapters/{chapter}' if chapter else f'/subjects/{subject_id}',303)
@@ -490,9 +521,9 @@ def open_file(request: Request, file_id: int):
     user=require_user(request); p=db.get_pdf(user['id'],file_id,True)
     if not p: raise HTTPException(404)
     mime={'pdf':'application/pdf','doc':'application/msword','docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','ppt':'application/vnd.ms-powerpoint','pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}.get(p['file_type'],'application/octet-stream')
-    # Browsers do not natively render DOCX/PPTX. Keep this endpoint for PDFs/images,
-    # while the UI uses /view for Office files and /download for the original.
-    disposition='inline' if p['file_type'] in {'pdf','jpg','jpeg','png','webp','gif'} else 'attachment'
+    # Keep Office files inline so browsers/extensions that support them can render
+    # them in a new tab; otherwise the browser/OS may download them normally.
+    disposition='inline'
     return Response(content=bytes(p['data']), media_type=mime, headers={'Content-Disposition': f"{disposition}; filename=\"{p['original_name'].replace(chr(34), '')}\""})
 
 @app.get('/files/{file_id}/download')
@@ -501,6 +532,24 @@ def download_file(request: Request, file_id: int):
     if not p: raise HTTPException(404)
     mime={'pdf':'application/pdf','doc':'application/msword','docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','ppt':'application/vnd.ms-powerpoint','pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp','gif':'image/gif'}.get(p['file_type'],'application/octet-stream')
     return Response(content=bytes(p['data']), media_type=mime, headers={'Content-Disposition': f"attachment; filename=\"{p['original_name'].replace(chr(34), '')}\""})
+
+@app.get('/files/{file_id}/office-preview')
+def office_preview(request: Request, file_id: int):
+    user=require_user(request)
+    p=db.get_pdf(user['id'],file_id,True)
+    if not p: raise HTTPException(404)
+    if p['file_type'] not in {'doc','docx','ppt','pptx'}:
+        raise HTTPException(400,'Office preview is available for Word and PowerPoint files.')
+    cached=db.get_file_preview(user['id'],file_id)
+    preview=bytes(cached['preview_data']) if cached and cached['preview_data'] else None
+    count=int(cached['preview_page_count'] or 0) if cached else 0
+    if not preview:
+        preview,count=build_office_preview(bytes(p['data']), '.'+p['file_type'], p['original_name'])
+        if preview:
+            db.save_file_preview(user['id'],file_id,preview,count)
+    if not preview:
+        raise HTTPException(503,'Office preview is not available on this server. Use Open original or Download.')
+    return Response(content=preview, media_type='application/pdf', headers={'Content-Disposition': 'inline'})
 
 @app.get('/files/{file_id}/view', response_class=HTMLResponse)
 def view_file(request: Request, file_id: int):
@@ -511,7 +560,8 @@ def view_file(request: Request, file_id: int):
     if p['file_type'] in {'jpg','jpeg','png','webp','gif'}:
         return render(request,'image_viewer.html',{'file':p})
     pages=db.get_pdf_pages(user['id'],file_id)
-    return render(request,'document_viewer.html',{'file':p,'pages':pages})
+    preview=db.get_file_preview(user['id'],file_id) if p['file_type'] in {'doc','docx','ppt','pptx'} else None
+    return render(request,'document_viewer.html',{'file':p,'pages':pages,'preview_available':bool(preview and preview['preview_data']),'preview_page_count':int((preview or {}).get('preview_page_count') or 0)})
 
 @app.get('/pdfs/{pdf_id}/open')
 def open_pdf(request: Request,pdf_id: int):
