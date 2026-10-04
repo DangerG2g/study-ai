@@ -1,24 +1,122 @@
 {% extends "base.html" %}
 {% block title %}{{ file.original_name }} · Study AI Reader{% endblock %}
-{% block crumb %}Document reader / {{ file.original_name }}{% endblock %}
+{% block crumb %}{{ 'PPT viewer' if file.file_type in ['ppt','pptx'] else 'Word viewer' }} / {{ file.original_name }}{% endblock %}
 {% block content %}
-<div class="document-reader-head"><div><a class="back" href="{% if file.chapter_id %}/chapters/{{ file.chapter_id }}{% else %}/subjects/{{ file.subject_id }}{% endif %}">← Back</a><div class="eyebrow">{{ file.file_type|upper }} READER</div><h1>{{ file.original_name }}</h1><p>View the original appearance when available, or switch to extracted text.</p></div><div class="head-actions"><a class="ghost" target="_blank" rel="noopener" href="/files/{{ file.id }}/open">Open original ↗</a><a class="ghost" href="/files/{{ file.id }}/download">Download</a></div></div>
-<div class="document-viewer-switch" role="tablist"><button class="document-tab active" type="button" data-tab="visual">Visual view</button><button class="document-tab" type="button" data-tab="text">Extracted text</button></div>
+<div class="document-reader-head">
+  <div>
+    <a class="back" href="{% if file.chapter_id %}/chapters/{{ file.chapter_id }}{% else %}/subjects/{{ file.subject_id }}{% endif %}">← Back</a>
+    <div class="eyebrow">{{ 'PPT / PPTX VIEWER' if file.file_type in ['ppt','pptx'] else 'WORD / DOCX VIEWER' }}</div>
+    <h1>{{ file.original_name }}</h1>
+    <p>The original visual layout is the main view. Extracted text is optional for searching and copying.</p>
+  </div>
+  <div class="head-actions">
+    <a class="ghost" target="_blank" rel="noopener" href="/files/{{ file.id }}/open">Open original ↗</a>
+    <a class="ghost" href="/files/{{ file.id }}/download">Download</a>
+  </div>
+</div>
 
-<section id="documentVisual" class="document-tab-panel active">
-  {% if preview_available %}
-  <div class="office-visual-toolbar"><div><b>Original visual layout</b><span>{% if file.file_type in ['ppt','pptx'] %}Slides are shown in their original presentation layout.{% else %}Word document pages are rendered for reading.{% endif %}</span></div><a class="ghost" target="_blank" rel="noopener" href="/files/{{ file.id }}/office-preview">Open visual preview ↗</a></div>
-  <div class="office-preview-frame"><iframe title="Original document preview" src="/files/{{ file.id }}/office-preview#page=1"></iframe></div>
-  {% else %}
-  <div class="office-fallback"><div class="empty-icon">◫</div><h3>Visual preview is not available</h3><p>The original Office file is still safely stored. Use <b>Open original</b> or <b>Download</b> above. If your browser has an Office viewer installed, it can open the original in a new tab.</p></div>
-  {% endif %}
-</section>
+{% if preview_available and preview_page_count > 0 %}
+<div class="office-reader-shell" data-office-pages="{{ preview_page_count }}" data-file-id="{{ file.id }}">
+  <div class="office-reader-toolbar">
+    <div class="office-page-controls">
+      <button class="icon-control" id="officePrev" type="button" aria-label="Previous page">‹</button>
+      <div class="office-page-number"><input id="officePageInput" type="number" min="1" max="{{ preview_page_count }}" value="1" aria-label="Page number"><span>/ {{ preview_page_count }}</span></div>
+      <button class="icon-control" id="officeNext" type="button" aria-label="Next page">›</button>
+    </div>
+    <div class="office-view-label"><b>{{ 'Slide' if file.file_type in ['ppt','pptx'] else 'Page' }} <span id="officePageLabel">1</span></b><span>of {{ preview_page_count }}</span></div>
+    <div class="office-tools">
+      <button class="ghost" type="button" id="officeFit">Fit view</button>
+      <a class="ghost" target="_blank" rel="noopener" href="/files/{{ file.id }}/office-preview">Open visual preview ↗</a>
+      <a class="ghost" href="/files/{{ file.id }}/download">Download</a>
+    </div>
+  </div>
 
-<section id="documentText" class="document-tab-panel">
-  <div class="document-reader-note"><b>Extracted text</b> is optional. This is a searchable text representation of the uploaded file; the visual view above remains the primary view.</div>
-  {% if pages %}<div class="document-page-toolbar"><b>{{ pages|length }} extracted section{% if pages|length != 1 %}s{% endif %}</b><span>Use this view when you want to search or copy the text.</span></div><div class="document-reader">{% for page in pages %}<section class="doc-page" id="page-{{ page.page_number }}"><div class="page-number">{% if file.file_type in ['ppt','pptx'] %}SLIDE{% else %}DOCUMENT TEXT{% endif %} {{ page.page_number }}</div><div class="doc-page-text">{{ page.text }}</div></section>{% endfor %}</div>{% else %}<div class="office-fallback"><h3>No readable text was extracted</h3><p>The original file is still available above.</p></div>{% endif %}
+  <div class="office-reader-grid">
+    <section class="office-main-stage">
+      <div class="office-stage-head"><span>{{ 'PRESENTATION SLIDE' if file.file_type in ['ppt','pptx'] else 'DOCUMENT PAGE' }}</span><span id="officeStagePage">{{ 'SLIDE' if file.file_type in ['ppt','pptx'] else 'PAGE' }} 1 / {{ preview_page_count }}</span></div>
+      <div class="office-stage-scroll" id="officeStageScroll">
+        <img id="officeMainPage" class="office-main-page" src="/files/{{ file.id }}/preview-page/1" alt="{{ file.original_name }} page 1">
+      </div>
+    </section>
+
+    <aside class="office-page-sidebar">
+      <div class="office-sidebar-head"><b>{{ 'SLIDES' if file.file_type in ['ppt','pptx'] else 'PAGES' }}</b><span>Choose a {{ 'slide' if file.file_type in ['ppt','pptx'] else 'page' }}</span></div>
+      <div class="office-page-list" id="officePageList">
+        {% for p in range(1, preview_page_count + 1) %}
+        <button type="button" class="office-page-chip {% if p == 1 %}selected{% endif %}" data-page="{{ p }}">
+          <img src="/files/{{ file.id }}/preview-page/{{ p }}" loading="lazy" alt="{{ 'Slide' if file.file_type in ['ppt','pptx'] else 'Page' }} {{ p }} thumbnail">
+          <span><b>{{ p }}</b><small>{{ 'Slide' if file.file_type in ['ppt','pptx'] else 'Page' }} {{ p }}</small></span>
+        </button>
+        {% endfor %}
+      </div>
+    </aside>
+  </div>
+</div>
+{% else %}
+<div class="office-fallback">
+  <div class="empty-icon">◫</div>
+  <h3>Visual preview is not available</h3>
+  <p>The original Office file is stored safely. You can still use the readable extracted-text view below or open/download the original file.</p>
+</div>
+{% endif %}
+
+<section class="office-text-section">
+  <div class="office-text-head">
+    <div><div class="eyebrow">OPTIONAL</div><h2>Extracted text</h2><p>Use this only when you want to search, copy, or quickly read the document content.</p></div>
+    <div class="office-text-actions"><button class="ghost" type="button" id="toggleOfficeText">Hide text</button><button class="ghost" type="button" id="copyOfficeText">Copy text</button></div>
+  </div>
+  <div id="officeExtractedText" class="document-reader office-readable-text">
+    {% if pages %}
+      {% for page in pages %}
+      <article class="doc-page" id="office-text-page-{{ page.page_number }}">
+        <div class="page-number">{{ 'SLIDE' if file.file_type in ['ppt','pptx'] else 'DOCUMENT PAGE' }} {{ page.page_number }}</div>
+        <div class="doc-page-text">{{ page.text }}</div>
+      </article>
+      {% endfor %}
+    {% else %}
+      <div class="office-fallback"><h3>No readable text was extracted</h3><p>The original file is still available above.</p></div>
+    {% endif %}
+  </div>
 </section>
 {% endblock %}
-{% block scripts %}<script>
-(function(){const tabs=[...document.querySelectorAll('.document-tab')];const panels={visual:document.getElementById('documentVisual'),text:document.getElementById('documentText')};tabs.forEach(t=>t.addEventListener('click',()=>{tabs.forEach(x=>x.classList.toggle('active',x===t));Object.entries(panels).forEach(([k,p])=>p?.classList.toggle('active',k===t.dataset.tab));}));})();
-</script>{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const shell=document.querySelector('.office-reader-shell');
+  if(!shell) return;
+  const total=Number(shell.dataset.officePages||1), fileId=shell.dataset.fileId;
+  const img=document.getElementById('officeMainPage');
+  const input=document.getElementById('officePageInput');
+  const label=document.getElementById('officePageLabel');
+  const stage=document.getElementById('officeStagePage');
+  const list=document.getElementById('officePageList');
+  const scroll=document.getElementById('officeStageScroll');
+  function setPage(raw){
+    let p=Math.max(1,Math.min(total,Number(raw)||1));
+    input.value=p; label.textContent=p;
+    stage.textContent=({{ 'true' if file.file_type in ['ppt','pptx'] else 'false' }}?'SLIDE ':'PAGE ')+p+' / '+total;
+    img.src='/files/'+fileId+'/preview-page/'+p;
+    img.alt='{{ file.original_name|e }} page '+p;
+    [...list.querySelectorAll('.office-page-chip')].forEach(b=>b.classList.toggle('selected',Number(b.dataset.page)===p));
+    const active=list.querySelector('.office-page-chip.selected');
+    if(active) active.scrollIntoView({block:'nearest'});
+    scroll.scrollTop=0;
+    window.history.replaceState({},'',location.pathname+'?page='+p);
+  }
+  document.getElementById('officePrev').addEventListener('click',()=>setPage(Number(input.value)-1));
+  document.getElementById('officeNext').addEventListener('click',()=>setPage(Number(input.value)+1));
+  input.addEventListener('change',()=>setPage(input.value));
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();setPage(input.value)}});
+  list.querySelectorAll('.office-page-chip').forEach(b=>b.addEventListener('click',()=>setPage(b.dataset.page)));
+  document.getElementById('officeFit').addEventListener('click',()=>{img.classList.toggle('fit-width'); scroll.scrollTop=0;});
+  const params=new URLSearchParams(location.search); if(params.get('page')) setPage(params.get('page'));
+})();
+(function(){
+  const text=document.getElementById('officeExtractedText');
+  const toggle=document.getElementById('toggleOfficeText');
+  if(toggle&&text) toggle.addEventListener('click',()=>{const hidden=text.hasAttribute('hidden'); if(hidden){text.removeAttribute('hidden');toggle.textContent='Hide text'}else{text.setAttribute('hidden','');toggle.textContent='Show extracted text'}});
+  const copy=document.getElementById('copyOfficeText');
+  if(copy&&text) copy.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(text.innerText);copy.textContent='Copied ✓';setTimeout(()=>copy.textContent='Copy text',1200)}catch(e){copy.textContent='Copy failed'}});
+})();
+</script>
+{% endblock %}
