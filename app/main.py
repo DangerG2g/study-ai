@@ -22,7 +22,7 @@ MAX_LOGIN_ATTEMPTS = 5
 LOCK_MINUTES = 15
 PASSWORD_MIN = 8
 
-app = FastAPI(title='Study AI', version='2.0')
+app = FastAPI(title='Knowly', version='2.0')
 app.mount('/static', StaticFiles(directory=BASE_DIR / 'app' / 'static'), name='static')
 templates = Jinja2Templates(directory=BASE_DIR / 'app' / 'templates')
 
@@ -176,7 +176,7 @@ def startup():
 
 @app.get('/health')
 def health():
-    return {'status':'ok','app':'Study AI','version':'2.0'}
+    return {'status':'ok','app':'Knowly','version':'2.0'}
 
 @app.get('/login', response_class=HTMLResponse)
 def login_page(request: Request):
