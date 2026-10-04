@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
-{% block title %}Voice Notes · Study AI{% endblock %}
+{% block title %}Voice Notes · Knowly{% endblock %}
 {% block crumb %}Voice notes{% endblock %}
 {% block content %}
-<div class="voice-page"><div class="page-head"><div><a class="back" href="/">← Dashboard</a><div class="eyebrow">VOICE NOTES</div><h1>Turn your voice into notes</h1><p>Speak naturally. Study AI records your audio and creates an editable live transcript.</p></div></div>
+<div class="voice-page"><div class="page-head"><div><a class="back" href="/">← Dashboard</a><div class="eyebrow">VOICE NOTES</div><h1>Turn your voice into notes</h1><p>Speak naturally. Knowly records your audio and creates an editable live transcript.</p></div></div>
 <div class="voice-stepbar"><span class="active"><b>01</b> Choose location</span><span><b>02</b> Record</span><span><b>03</b> Save note</span></div>
 <div class="voice-layout">
 <section class="panel voice-setup"><div class="eyebrow">WHERE SHOULD IT GO?</div><h2>Choose your study location</h2><label>Subject<select id="voiceSubject"><option value="">Choose a subject</option>{% for s in subjects %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></label><label>Chapter<select id="voiceChapter"><option value="">Directly in subject</option>{% for c in chapters %}<option value="{{ c.id }}" data-subject="{{ c.subject_id }}">{{ c.subject_name }} · {{ c.name }}</option>{% endfor %}</select></label><label>Note title<input id="voiceTitle" value="Voice note" maxlength="120"></label><div class="voice-location-status" id="locationStatus">Choose a subject to continue.</div></section>

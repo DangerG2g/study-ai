@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}{{ file.original_name }} · Study AI Reader{% endblock %}
+{% block title %}{{ file.original_name }} · Knowly Reader{% endblock %}
 {% block crumb %}{{ 'PPT viewer' if file.file_type in ['ppt','pptx'] else 'Word viewer' }} / {{ file.original_name }}{% endblock %}
 {% block content %}
 <div class="pdf-reader-head">
@@ -7,7 +7,7 @@
     <a class="back" href="{% if file.chapter_id %}/chapters/{{ file.chapter_id }}{% else %}/subjects/{{ file.subject_id }}{% endif %}">← Back</a>
     <div class="eyebrow">{{ 'PPT / PPTX READER' if file.file_type in ['ppt','pptx'] else 'WORD / DOCX READER' }}</div>
     <h1>{{ file.original_name }}</h1>
-    <p>View the original visual layout inside Study AI. Extracted text is optional.</p>
+    <p>View the original visual layout inside Knowly. Extracted text is optional.</p>
   </div>
   <div class="head-actions">
     <a class="ghost" target="_blank" rel="noopener" href="/files/{{ file.id }}/open">Open original ↗</a>
@@ -59,7 +59,7 @@
 <div class="office-fallback">
   <div class="empty-icon">◫</div>
   <h3>Visual preview is being prepared</h3>
-  <p>Study AI could not use the visual preview yet. If this is an older upload, open this page again after the latest Render deployment. The original file and extracted text remain available.</p>
+  <p>Knowly could not use the visual preview yet. If this is an older upload, open this page again after the latest Render deployment. The original file and extracted text remain available.</p>
   <div class="head-actions" style="justify-content:center;margin-top:18px">
     <a class="ghost" target="_blank" rel="noopener" href="/files/{{ file.id }}/open">Open original ↗</a>
     <a class="ghost" href="/files/{{ file.id }}/download">Download</a>
