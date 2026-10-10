@@ -21,7 +21,9 @@
       <a href="/" class="nav-link{% if request.url.path == '/' %} active{% endif %}">⌂ <span>Dashboard</span></a>
       <a href="/search" class="nav-link{% if request.url.path.startswith('/search') %} active{% endif %}">⌕ <span>Search knowledge</span></a>
       <a href="/add-material" class="nav-link{% if request.url.path.startswith('/add-material') %} active{% endif %}">＋ <span>Add Material</span></a>
-      <a href="/assistant" class="nav-link{% if request.url.path.startswith('/assistant') %} active{% endif %}">✦ <span>Ask Study</span></a>
+      <a href="/assistant" class="nav-link{% if request.url.path.startswith('/assistant') %} active{% endif %}">✦ <span>Ask Knowly</span></a>
+      <a href="/quiz-revision" class="nav-link{% if request.url.path.startswith('/quiz-revision') %} active{% endif %}">◎ <span>Quiz &amp; Revision</span></a>
+      <a href="/analytics" class="nav-link{% if request.url.path.startswith('/analytics') %} active{% endif %}">◷ <span>Achievements</span></a>
     </nav>
     <div class="side-label">MY SPACE</div>
     <div class="mini-note">Explore your learning universe. Study, collect ideas, and grow every day.</div>
