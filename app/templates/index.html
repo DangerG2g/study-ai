@@ -1,62 +1,55 @@
 {% extends 'base.html' %}{% block title %}Dashboard · Knowly{% endblock %}
 {% block crumb %}Dashboard{% endblock %}
 {% block content %}
-<div class="dash-v3">
-  <section class="dash-welcome">
-    <div class="welcome-copy">
-      <div class="eyebrow">STUDENT DASHBOARD</div>
-      <h1>Good to see you, <span>{{ user.username }}</span>.</h1>
-      <p>Your learning space is ready. Pick a subject, continue a chapter, or add new material.</p>
-      <div class="welcome-actions">
-        <button class="primary" onclick="openModal('subjectModal')">＋ Add subject</button>
-        <a class="ghost" href="/search">⌕ Search my knowledge</a>
-      </div>
+<div class="knowly-universe-page">
+  <section class="universe-hero">
+    <div class="universe-copy">
+      <div class="universe-kicker"><span class="pulse-dot"></span> YOUR LEARNING UNIVERSE</div>
+      <h1>Good to see you,<br><span>{{ user.username }}</span><em> ✦</em></h1>
+      <p>Every subject is a world. Every chapter moves you forward.</p>
+      <div class="universe-actions"><button class="primary" onclick="openModal('subjectModal')">＋ Create a subject</button><a class="universe-search-link" href="/search">⌕ Search your knowledge <span>↗</span></a></div>
     </div>
-    <div class="learning-orbit" aria-hidden="true">
-      <div class="orbit-core"><span>✦</span></div>
-      <div class="orbit-ring r1"></div><div class="orbit-ring r2"></div><div class="orbit-ring r3"></div>
-      <div class="orbit-dot d1">📚</div><div class="orbit-dot d2">🧠</div><div class="orbit-dot d3">⚡</div>
+    <div class="universe-scene" aria-label="Illustration of your learning universe">
+      <div class="universe-stars"></div><div class="universe-orbit orbit-a"></div><div class="universe-orbit orbit-b"></div><div class="universe-orbit orbit-c"></div>
+      <div class="planet planet-core"><span>KNOWLY</span><small>YOUR STUDY SPACE</small></div>
+      <div class="planet planet-one"><span>∑</span></div><div class="planet planet-two"><span>λ</span></div><div class="planet planet-three"><span>⌘</span></div>
+      <div class="planet-label label-one">Mathematics <small>Explore concepts</small></div><div class="planet-label label-two">C Programming <small>Build your skills</small></div>
+      <div class="universe-spark spark-one">✦</div><div class="universe-spark spark-two">✧</div><div class="universe-spark spark-three">✦</div>
     </div>
+    <div class="universe-hero-bottom"><span><i></i> Your space is ready to grow</span><span>LEARN · PRACTICE · REVISE</span></div>
   </section>
 
-  <section class="dashboard-stats">
-    <div class="dash-stat"><div class="stat-icon purple">⌘</div><div><span>Subjects</span><strong>{{ subjects|length }}</strong><small>study areas</small></div></div>
-    <div class="dash-stat"><div class="stat-icon blue">◈</div><div><span>Chapters</span><strong>{{ stats.chapters }}</strong><small>chapters organised</small></div></div>
-    <div class="dash-stat"><div class="stat-icon green">✎</div><div><span>Notes</span><strong>{{ stats.notes }}</strong><small>ideas captured</small></div></div>
-    <div class="dash-stat"><div class="stat-icon orange">↥</div><div><span>Files</span><strong>{{ stats.pdfs }}</strong><small>study documents</small></div></div>
+  <section class="universe-metrics">
+    <div class="metric-orb metric-violet"><span class="metric-glyph">✺</span><div><small>SUBJECTS</small><strong>{{ subjects|length }}</strong><span>learning worlds</span></div></div>
+    <div class="metric-orb metric-cyan"><span class="metric-glyph">◈</span><div><small>CHAPTERS</small><strong>{{ stats.chapters }}</strong><span>paths to explore</span></div></div>
+    <div class="metric-orb metric-pink"><span class="metric-glyph">✎</span><div><small>NOTES</small><strong>{{ stats.notes }}</strong><span>ideas collected</span></div></div>
+    <div class="metric-orb metric-amber"><span class="metric-glyph">▧</span><div><small>MATERIALS</small><strong>{{ stats.pdfs }}</strong><span>saved resources</span></div></div>
   </section>
 
-  <section class="library-v3">
-    <div class="section-head v3-head">
-      <div><div class="eyebrow">YOUR LEARNING LIBRARY</div><h2>Subjects</h2><p class="section-sub">Everything is organised around the subjects you are studying.</p></div>
-      <button class="ghost" onclick="openModal('subjectModal')">＋ New subject</button>
-    </div>
-    <div class="subject-grid-v3">
+  <section class="universe-library">
+    <div class="universe-section-heading"><div><span class="universe-kicker">YOUR WORLDS</span><h2>Explore your subjects</h2><p>Jump back into a subject or create a new world to learn something different.</p></div><button class="universe-outline-btn" onclick="openModal('subjectModal')">＋ New subject</button></div>
+    <div class="universe-subject-grid">
       {% for s in subjects %}
-      <a class="subject-card-v3 tone-{{ loop.index0 % 4 }}" href="/subjects/{{ s.id }}">
-        <div class="subject-card-glow"></div>
-        <div class="subject-card-top"><span class="subject-index">{{ '%02d' % loop.index }}</span><span class="subject-arrow">↗</span></div>
-        <div class="subject-big-icon">{{ ['λ','∑','⌘','◈'][loop.index0 % 4] }}</div>
-        <h3>{{ s.name }}</h3>
-        <div class="subject-meta"><span>{{ s.chapter_count }} chapter{{ '' if s.chapter_count == 1 else 's' }}</span><span>Open workspace →</span></div>
+      <a class="universe-subject-card universe-tone-{{ loop.index0 % 5 }}" href="/subjects/{{ s.id }}">
+        <div class="subject-card-topline"><span class="universe-subject-symbol">{{ ['∑','λ','⌘','◉','✳'][loop.index0 % 5] }}</span><span class="universe-card-arrow">↗</span></div>
+        <span class="universe-card-index">WORLD {{ '%02d' % loop.index }}</span><h3>{{ s.name }}</h3>
+        <div class="universe-subject-foot"><span>{{ s.chapter_count }} chapter{{ '' if s.chapter_count == 1 else 's' }}</span><span>Enter world <b>→</b></span></div>
+        <div class="universe-progress-track"><i style="width:{{ [35 + (loop.index0 * 13) % 60, 95]|min }}%"></i></div>
       </a>
       {% else %}
-      <div class="empty-card empty-v3"><div class="empty-icon">✦</div><h3>Start your study library</h3><p>Create your first subject and organise everything you learn inside it.</p><button class="primary" onclick="openModal('subjectModal')">Create first subject</button></div>
+      <div class="universe-empty"><div class="empty-planet">✦</div><h3>Your first world is waiting</h3><p>Create a subject to start building your personal learning universe.</p><button class="primary" onclick="openModal('subjectModal')">Create your first subject</button></div>
       {% endfor %}
-      <button class="add-subject-card" onclick="openModal('subjectModal')"><span>＋</span><b>Add subject</b><small>Create another study area</small></button>
+      <button class="universe-add-card" onclick="openModal('subjectModal')"><span>＋</span><b>Create a new world</b><small>Add a subject to your universe</small></button>
     </div>
   </section>
 
-  <section class="quick-v3">
-    <div class="section-head v3-head compact"><div><div class="eyebrow">QUICK ACTIONS</div><h2>What do you want to do?</h2></div></div>
-    <div class="quick-grid-v3">
-      <button onclick="openModal('subjectModal')" class="action-card ac-purple"><span class="action-symbol">＋</span><div><b>Create subject</b><small>Start a new study area</small></div><i>→</i></button>
-      <a href="/search" class="action-card ac-blue"><span class="action-symbol">⌕</span><div><b>Search knowledge</b><small>Find notes and file text</small></div><i>→</i></a>
-      <a href="/add-material" class="action-card ac-green"><span class="action-symbol">＋</span><div><b>Add material</b><small>Note, file or voice note</small></div><i>→</i></a>
-      <a href="/assistant" class="action-card ac-orange"><span class="action-symbol">✦</span><div><b>Ask Study</b><small>Study from your library</small></div><i>→</i></a>
+  <section class="universe-launchpad"><div class="universe-section-heading"><div><span class="universe-kicker">QUICK LAUNCH</span><h2>Where to next?</h2></div></div>
+    <div class="universe-launch-grid">
+      <a href="/add-material" class="launch-tile launch-material"><span class="launch-icon">＋</span><div><b>Add material</b><small>Notes, documents and voice</small></div><span class="launch-arrow">↗</span></a>
+      <a href="/search" class="launch-tile launch-search"><span class="launch-icon">⌕</span><div><b>Search knowledge</b><small>Find a concept or page</small></div><span class="launch-arrow">↗</span></a>
+      <a href="/assistant" class="launch-tile launch-ask"><span class="launch-icon">✧</span><div><b>Ask Knowly</b><small>Explore your saved material</small></div><span class="launch-arrow">↗</span></a>
     </div>
   </section>
-
   {% if results is not none %}<div class="section-head compact"><div><div class="eyebrow">SEARCH RESULTS</div><h2>For “{{ query }}”</h2></div></div><div class="results"><h3>Notes</h3>{% for r in results.notes %}<a href="{% if r.chapter_id %}/chapters/{{ r.chapter_id }}{% else %}/subjects/{{ r.subject_id }}{% endif %}" class="result"><b>{{ r.title }}</b><small>{{ r.subject_name }}{% if r.chapter_name %} · {{ r.chapter_name }}{% else %} · Direct subject material{% endif %}</small><p>{{ r.snippet.before }}<mark>{{ r.snippet.match }}</mark>{{ r.snippet.after }}</p></a>{% else %}<p class="muted">No matching notes.</p>{% endfor %}<h3>Files</h3>{% for r in results.pages %}<a href="/pdfs/{{ r.pdf_id }}/text" class="result"><b>{{ r.original_name }}</b><small>{{ r.subject_name }}{% if r.chapter_name %} · {{ r.chapter_name }}{% else %} · Direct subject material{% endif %} · page {{ r.page_number }}</small><p>{{ r.snippet.before }}<mark>{{ r.snippet.match }}</mark>{{ r.snippet.after }}</p></a>{% else %}<p class="muted">No matching file text.</p>{% endfor %}</div>{% endif %}
 </div>
 <div id="subjectModal" class="modal"><div class="modal-box"><button class="x" onclick="closeModal('subjectModal')">×</button><div class="eyebrow">NEW STUDY AREA</div><h2>Create a subject</h2><form method="post" action="/subjects"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Subject name<input name="name" placeholder="e.g. Computer Science" required autofocus></label><button class="primary full">Create subject</button></form></div></div>
