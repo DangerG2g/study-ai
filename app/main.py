@@ -561,7 +561,13 @@ def assistant_ask(request: Request, question: str = Form(...), csrf_token: str =
             answer = (response.output_text or '').strip()
             if not answer:
                 answer = "The AI returned no text. Please try again."
-        except Exception:
+        except Exception as exc:
+            # Log a useful diagnostic without ever logging the API key.
+            import logging
+            logging.getLogger("knowly.ai").exception(
+                "Ask Knowly OpenAI request failed (%s): %s",
+                type(exc).__name__, str(exc)[:500]
+            )
             # Keep the page useful if the provider is not configured or unavailable.
             answer, answer_parts = _extractive_answer(q, sources, mode)
             ai_enabled = False
