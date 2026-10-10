@@ -674,8 +674,8 @@ def study_workspace(request: Request, pdf_id: int):
     pdf = db.get_pdf(user['id'], pdf_id)
     if not pdf:
         raise HTTPException(404)
-    if pdf['file_type'] not in {'pdf','doc','docx','ppt','pptx','jpg','jpeg','png','webp','gif'}:
-        raise HTTPException(400, 'This file type is not supported in the study workspace.')
+    if pdf['file_type'] != 'pdf':
+        raise HTTPException(400, 'The split workspace currently supports PDF files.')
     subject = db.get_subject(user['id'], int(pdf['subject_id']))
     chapter = db.get_chapter(user['id'], int(pdf['chapter_id'])) if pdf['chapter_id'] else None
     chapter_notes = db.list_notes(user['id'], int(pdf['chapter_id'])) if pdf['chapter_id'] else db.list_subject_notes(user['id'], int(pdf['subject_id']))
@@ -692,6 +692,7 @@ def create_sticky_note(request: Request, pdf_id: int, title: str = Form(...), bo
     user = require_user(request); require_csrf(request, csrf_token)
     pdf = db.get_pdf(user['id'], pdf_id)
     if not pdf: raise HTTPException(404)
+    if pdf['file_type'] != 'pdf': raise HTTPException(400, 'Sticky notes in the split workspace currently support PDF files.')
     if not title.strip() or not body.strip(): raise HTTPException(400, 'Enter a title and note text.')
     if color not in {'violet','yellow','mint','coral'}: color='violet'
     db.add_sticky_note(user['id'], int(pdf['subject_id']), int(pdf['chapter_id']) if pdf['chapter_id'] else None, pdf_id, title.strip()[:120], body.strip()[:12000], color)
@@ -737,6 +738,28 @@ def remove_pdf(request: Request,pdf_id:int,csrf_token:str=Form(...)):
     if not p: raise HTTPException(404)
     db.delete_pdf(user['id'],pdf_id)
     return RedirectResponse(f'/chapters/{p["chapter_id"]}' if p['chapter_id'] else f'/subjects/{p["subject_id"]}',303)
+
+@app.get('/analytics', response_class=HTMLResponse)
+def analytics_page(request: Request):
+    """Achievements and focus analytics page."""
+    user = require_user(request)
+    subjects, chapters, stats = db.dashboard_data(user['id'])
+    return render(request, 'analytics.html', {
+        'subjects': subjects,
+        'chapters': chapters,
+        'stats': stats,
+    })
+
+@app.get('/quiz-revision', response_class=HTMLResponse)
+def quiz_revision_page(request: Request):
+    """Quick Revision page; quiz interactions are the template's sample quiz."""
+    user = require_user(request)
+    subjects, chapters, stats = db.dashboard_data(user['id'])
+    return render(request, 'quiz_revision.html', {
+        'subjects': subjects,
+        'chapters': chapters,
+        'stats': stats,
+    })
 
 @app.get('/search',response_class=HTMLResponse)
 def search(request: Request,q:str=''):
