@@ -75,6 +75,20 @@ CREATE TABLE IF NOT EXISTS audio_notes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_audio_notes_user ON audio_notes(user_id);
+CREATE TABLE IF NOT EXISTS sticky_notes (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject_id BIGINT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    chapter_id BIGINT REFERENCES chapters(id) ON DELETE CASCADE,
+    pdf_id BIGINT REFERENCES pdf_files(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    color VARCHAR(20) NOT NULL DEFAULT 'violet',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_sticky_notes_user ON sticky_notes(user_id);
+CREATE INDEX IF NOT EXISTS idx_sticky_notes_pdf ON sticky_notes(pdf_id);
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS file_type VARCHAR(10) NOT NULL DEFAULT 'pdf';
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS preview_data BYTEA NULL;
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS preview_page_count INTEGER NOT NULL DEFAULT 0;
@@ -403,3 +417,29 @@ def search_locations(user_id, query='', limit=30):
             (user_id,user_id,pattern,pattern,limit)
         ).fetchall()
     return {'subjects':subjects,'chapters':chapters}
+
+
+# ---------- Step 3: study workspace sticky notes ----------
+def list_sticky_notes(user_id, pdf_id):
+    with connect() as conn:
+        return conn.execute("""SELECT id, user_id, subject_id, chapter_id, pdf_id, title, body, color, created_at, updated_at
+            FROM sticky_notes WHERE user_id=%s AND pdf_id=%s ORDER BY updated_at DESC, id DESC""", (user_id, pdf_id)).fetchall()
+
+def add_sticky_note(user_id, subject_id, chapter_id, pdf_id, title, body, color='violet'):
+    with connect() as conn:
+        return conn.execute("""INSERT INTO sticky_notes(user_id,subject_id,chapter_id,pdf_id,title,body,color)
+            VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (user_id, subject_id, chapter_id, pdf_id, title, body, color)).fetchone()
+
+def get_sticky_note(user_id, sticky_id):
+    with connect() as conn:
+        return conn.execute("SELECT * FROM sticky_notes WHERE id=%s AND user_id=%s", (sticky_id,user_id)).fetchone()
+
+def update_sticky_note(user_id, sticky_id, title, body, color):
+    with connect() as conn:
+        return conn.execute("""UPDATE sticky_notes SET title=%s, body=%s, color=%s, updated_at=CURRENT_TIMESTAMP
+            WHERE id=%s AND user_id=%s RETURNING id""", (title,body,color,sticky_id,user_id)).fetchone()
+
+def delete_sticky_note(user_id, sticky_id):
+    with connect() as conn:
+        return conn.execute("DELETE FROM sticky_notes WHERE id=%s AND user_id=%s RETURNING id", (sticky_id,user_id)).fetchone()

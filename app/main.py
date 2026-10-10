@@ -739,18 +739,6 @@ def remove_pdf(request: Request,pdf_id:int,csrf_token:str=Form(...)):
     db.delete_pdf(user['id'],pdf_id)
     return RedirectResponse(f'/chapters/{p["chapter_id"]}' if p['chapter_id'] else f'/subjects/{p["subject_id"]}',303)
 
-@app.get('/quiz-revision', response_class=HTMLResponse)
-def quiz_revision(request: Request):
-    user = require_user(request)
-    subjects, chapters, stats = db.dashboard_data(user['id'])
-    return render(request, 'quiz_revision.html', {'subjects': subjects, 'chapters': chapters, 'stats': stats})
-
-@app.get('/analytics', response_class=HTMLResponse)
-def analytics(request: Request):
-    user = require_user(request)
-    subjects, chapters, stats = db.dashboard_data(user['id'])
-    return render(request, 'analytics.html', {'subjects': subjects, 'chapters': chapters, 'stats': stats})
-
 @app.get('/search',response_class=HTMLResponse)
 def search(request: Request,q:str=''):
     user=require_user(request)
