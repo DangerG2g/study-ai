@@ -1,23 +1,39 @@
 {% extends 'base.html' %}
-{% block title %}Ask Study · Knowly{% endblock %}
-{% block crumb %}Ask Study{% endblock %}
+{% block title %}Ask Knowly · Study AI{% endblock %}
+{% block crumb %}Learning Studio / Ask Knowly{% endblock %}
 {% block content %}
-<div class="assistant-page">
-  <div class="page-head assistant-head"><div><div class="eyebrow">YOUR STUDY LIBRARY</div><h1>Ask Study</h1><p>Ask about something you saved. Knowly finds the strongest passages and builds a grounded study answer from them.</p></div></div>
-  <section class="assistant-hero panel">
-    <div class="assistant-orb">✦</div>
-    <div class="assistant-copy"><span class="eyebrow">ASK YOUR NOTES</span><h2>What do you want to understand?</h2><p>Use a full question, a topic, or a concept such as “What is a token in C?”</p></div>
-    <form method="post" action="/assistant/ask" class="assistant-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><textarea name="question" rows="7" placeholder="Ask a question about your notes, PDFs, Word files or PowerPoint files…" required>{{ query }}</textarea><div class="assistant-form-bottom"><span>Answers are based on your saved study material.</span><button class="primary" type="submit">Find the best answer →</button></div></form>
+<div class="cosmic-page assistant-v2">
+  <section class="cosmic-page-hero assistant-v2-hero">
+    <div><span class="cosmic-kicker">YOUR STUDY LIBRARY · AI ASSISTANCE</span><h1>Ask <span>Knowly.</span></h1><p>Search your saved materials, ask questions, create summaries, and identify key concepts. Answers about your files are grounded in retrieved passages.</p><div class="cosmic-hero-actions"><a class="cosmic-button" href="/search">Search knowledge ↗</a><a class="cosmic-button ghost-cosmic" href="/">Back to dashboard</a></div></div>
+    <div class="assistant-v2-orb" aria-hidden="true"><span>✦</span><small>KNOWLEDGE<br>ASSISTANT</small></div>
   </section>
-  {% if error %}<div class="error-box">{{ error }}</div>{% endif %}
-  {% if query %}
-  <section class="answer-card"><div class="answer-header"><div><div class="eyebrow">GROUNDED STUDY ANSWER</div><h2>What your library says about “{{ query }}”</h2></div><span class="source-count">{{ source_count }} source{{ '' if source_count == 1 else 's' }}</span></div>
-    {% if answer_parts %}<div class="answer-points">{% for part in answer_parts %}<article><div class="answer-point-number">{{ '%02d' % loop.index }}</div><div><p>{{ part.text }}</p><small>{{ part.source }}</small></div></article>{% endfor %}</div>{% else %}<div class="assistant-empty"><h3>No strong answer found</h3><p>Try the important concept itself, for example <b>token</b>, <b>token in C</b>, or the exact chapter/topic name.</p></div>{% endif %}
+  <section class="cosmic-panel assistant-v2-panel">
+    <div class="cosmic-section-head"><div><span class="cosmic-kicker">ASK YOUR MATERIALS</span><h2>What are you studying?</h2><p>Use a question, chapter title, or topic such as “tokens in C”.</p></div><span class="cosmic-chip">{% if ai_enabled %}AI connected{% else %}Source-only mode{% endif %}</span></div>
+    <form method="post" action="/assistant/ask" class="assistant-v2-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="assistantQuestion">Question or topic</label>
+      <textarea id="assistantQuestion" name="question" rows="4" placeholder="Explain pointers using my C Programming notes…" required>{{ query }}</textarea>
+      <div class="assistant-v2-actions"><div class="assistant-mode-group" aria-label="Choose an assistance mode">
+        <button name="mode" value="ask" type="submit" class="cosmic-button {% if mode == 'ask' %}mode-active{% else %}ghost-cosmic{% endif %}">Ask</button>
+        <button name="mode" value="explain" type="submit" class="cosmic-button {% if mode == 'explain' %}mode-active{% else %}ghost-cosmic{% endif %}">Explain</button>
+        <button name="mode" value="summary" type="submit" class="cosmic-button {% if mode == 'summary' %}mode-active{% else %}ghost-cosmic{% endif %}">Summarize</button>
+        <button name="mode" value="concepts" type="submit" class="cosmic-button {% if mode == 'concepts' %}mode-active{% else %}ghost-cosmic{% endif %}">Key concepts</button>
+      </div><span class="assistant-privacy-note">Only matching content from your Knowly library is sent for a grounded AI response.</span></div>
+    </form>
   </section>
-  <section class="assistant-sources"><div class="section-head compact"><div><div class="eyebrow">SOURCE MATERIAL</div><h2>Open the matching material</h2></div></div>
-    {% for r in results.notes %}<article class="search-result source-card"><div class="result-icon">📝</div><div class="result-main"><span class="result-type">NOTE · {{ r.subject_name }}{% if r.chapter_name %} · {{ r.chapter_name }}{% endif %}</span><h3>{{ r.title }}</h3><p class="snippet">{{ r.snippet.before }}<mark>{{ r.snippet.match }}</mark>{{ r.snippet.after }}</p></div><a class="result-go" href="{% if r.chapter_id %}/chapters/{{ r.chapter_id }}{% else %}/subjects/{{ r.subject_id }}{% endif %}">Open note →</a></article>{% endfor %}
-    {% for r in results.pages %}<article class="search-result source-card"><div class="result-icon">{% if r.file_type == 'pdf' %}📄{% elif r.file_type in ['docx','pptx'] %}📎{% else %}🖼️{% endif %}</div><div class="result-main"><span class="result-type">{{ r.file_type|upper }} · {{ r.subject_name }}{% if r.chapter_name %} · {{ r.chapter_name }}{% endif %} · page {{ r.page_number }}</span><h3>{{ r.original_name }}</h3><p class="snippet">{{ r.snippet.before }}<mark>{{ r.snippet.match }}</mark>{{ r.snippet.after }}</p></div><a class="result-go" target="_blank" rel="noopener" href="{% if r.file_type == 'pdf' %}/pdfs/{{ r.pdf_id }}/viewer?page={{ r.page_number }}&q={{ query|urlencode }}{% else %}/files/{{ r.pdf_id }}/view{% endif %}">Open source ↗</a></article>{% endfor %}
-    {% if not results.notes and not results.pages %}<div class="empty-card"><h3>No matching source found</h3><p>Search is limited to your own Knowly library.</p></div>{% endif %}
+  {% if error %}<div class="assistant-v2-alert">{{ error }}</div>{% endif %}
+  {% if query and answer %}
+  <section class="cosmic-panel assistant-answer-panel">
+    <div class="cosmic-section-head"><div><span class="cosmic-kicker">{% if mode == 'summary' %}STUDY SUMMARY{% elif mode == 'concepts' %}REVISION CONCEPTS{% elif mode == 'explain' %}SIMPLIFIED EXPLANATION{% else %}ANSWER FROM YOUR LIBRARY{% endif %}</span><h2>{{ query }}</h2></div><span class="cosmic-chip">{{ source_count }} source{{ '' if source_count == 1 else 's' }}</span></div>
+    <div class="assistant-v2-answer">{{ answer }}</div>
+    {% if answer_parts %}<div class="assistant-v2-passage-list"><h3>Matching passages</h3>{% for part in answer_parts %}<article><p>{{ part.text }}</p><small>{{ part.source }}</small></article>{% endfor %}</div>{% endif %}
+  </section>
+  {% endif %}
+  {% if results %}
+  <section class="cosmic-panel assistant-v2-sources"><div class="cosmic-section-head"><div><span class="cosmic-kicker">RETRIEVED EVIDENCE</span><h2>Sources in your library</h2><p>Open the original material to verify the context.</p></div></div>
+    {% for r in results.notes %}<article class="assistant-source-row"><span class="assistant-source-icon">✎</span><div><small>NOTE · {{ r.subject_name }}{% if r.chapter_name %} / {{ r.chapter_name }}{% endif %}</small><b>{{ r.title }}</b><p>{{ r.snippet.before }}<mark>{{ r.snippet.match }}</mark>{{ r.snippet.after }}</p></div><a href="{% if r.chapter_id %}/chapters/{{ r.chapter_id }}{% else %}/subjects/{{ r.subject_id }}{% endif %}">Open note ↗</a></article>{% endfor %}
+    {% for r in results.pages %}<article class="assistant-source-row"><span class="assistant-source-icon">▤</span><div><small>{{ r.file_type|upper }} · {{ r.subject_name }}{% if r.chapter_name %} / {{ r.chapter_name }}{% endif %} · PAGE {{ r.page_number }}</small><b>{{ r.original_name }}</b><p>{{ r.snippet.before }}<mark>{{ r.snippet.match }}</mark>{{ r.snippet.after }}</p></div><a target="_blank" rel="noopener" href="{% if r.file_type == 'pdf' %}/pdfs/{{ r.pdf_id }}/viewer?page={{ r.page_number }}&q={{ query|urlencode }}{% else %}/files/{{ r.pdf_id }}/view{% endif %}">Open source ↗</a></article>{% endfor %}
+    {% if not results.notes and not results.pages %}<div class="cosmic-empty-state">No matching passages found. Try a more specific keyword or check that your material has searchable text.</div>{% endif %}
   </section>
   {% endif %}
 </div>
