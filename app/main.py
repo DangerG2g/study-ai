@@ -22,7 +22,7 @@ MAX_LOGIN_ATTEMPTS = 5
 LOCK_MINUTES = 15
 PASSWORD_MIN = 8
 
-app = FastAPI(title='Knowly', version='2.0')
+app = FastAPI(title='Study AI', version='2.0')
 app.mount('/static', StaticFiles(directory=BASE_DIR / 'app' / 'static'), name='static')
 templates = Jinja2Templates(directory=BASE_DIR / 'app' / 'templates')
 
@@ -176,7 +176,7 @@ def startup():
 
 @app.get('/health')
 def health():
-    return {'status':'ok','app':'Knowly','version':'2.0'}
+    return {'status':'ok','app':'Study AI','version':'2.0'}
 
 @app.get('/login', response_class=HTMLResponse)
 def login_page(request: Request):
@@ -668,6 +668,63 @@ def pdf_viewer(request: Request, pdf_id: int, page: int = 1, q: str = ''):
     target=next((p for p in pages if int(p['page_number']) == safe_page), None)
     return render(request,'pdf_viewer.html',{'pdf':pdf,'pages':pages,'target':target,'query':q,'page_number':safe_page})
 
+@app.get('/study/{pdf_id}', response_class=HTMLResponse)
+def study_workspace(request: Request, pdf_id: int):
+    user = require_user(request)
+    pdf = db.get_pdf(user['id'], pdf_id)
+    if not pdf:
+        raise HTTPException(404)
+    if pdf['file_type'] != 'pdf':
+        raise HTTPException(400, 'The split workspace currently supports PDF files.')
+    subject = db.get_subject(user['id'], int(pdf['subject_id']))
+    chapter = db.get_chapter(user['id'], int(pdf['chapter_id'])) if pdf['chapter_id'] else None
+    chapter_notes = db.list_notes(user['id'], int(pdf['chapter_id'])) if pdf['chapter_id'] else db.list_subject_notes(user['id'], int(pdf['subject_id']))
+    chapter_notes = [n for n in chapter_notes if not n.get('audio_id')]
+    return render(request, 'study_workspace.html', {
+        'pdf': pdf, 'subject': subject, 'chapter': chapter,
+        'sticky_notes': db.list_sticky_notes(user['id'], pdf_id),
+        'chapter_notes': chapter_notes,
+        'return_url': f"/chapters/{chapter['id']}" if chapter else f"/subjects/{subject['id']}"
+    })
+
+@app.post('/study/{pdf_id}/sticky-notes')
+def create_sticky_note(request: Request, pdf_id: int, title: str = Form(...), body: str = Form(...), color: str = Form('violet'), csrf_token: str = Form(...)):
+    user = require_user(request); require_csrf(request, csrf_token)
+    pdf = db.get_pdf(user['id'], pdf_id)
+    if not pdf: raise HTTPException(404)
+    if pdf['file_type'] != 'pdf': raise HTTPException(400, 'Sticky notes in the split workspace currently support PDF files.')
+    if not title.strip() or not body.strip(): raise HTTPException(400, 'Enter a title and note text.')
+    if color not in {'violet','yellow','mint','coral'}: color='violet'
+    db.add_sticky_note(user['id'], int(pdf['subject_id']), int(pdf['chapter_id']) if pdf['chapter_id'] else None, pdf_id, title.strip()[:120], body.strip()[:12000], color)
+    return RedirectResponse(f'/study/{pdf_id}#sticky-notes', 303)
+
+@app.post('/study/sticky-notes/{sticky_id}/edit')
+def edit_sticky_note(request: Request, sticky_id: int, title: str = Form(...), body: str = Form(...), color: str = Form('violet'), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    note=db.get_sticky_note(user['id'], sticky_id)
+    if not note: raise HTTPException(404)
+    if not title.strip() or not body.strip(): raise HTTPException(400, 'Enter a title and note text.')
+    if color not in {'violet','yellow','mint','coral'}: color='violet'
+    db.update_sticky_note(user['id'], sticky_id, title.strip()[:120], body.strip()[:12000], color)
+    return RedirectResponse(f"/study/{note['pdf_id']}#sticky-notes", 303)
+
+@app.post('/study/sticky-notes/{sticky_id}/delete')
+def remove_sticky_note(request: Request, sticky_id: int, csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    note=db.get_sticky_note(user['id'], sticky_id)
+    if not note: raise HTTPException(404)
+    db.delete_sticky_note(user['id'], sticky_id)
+    return RedirectResponse(f"/study/{note['pdf_id']}#sticky-notes", 303)
+
+@app.post('/study/{pdf_id}/chapter-notes')
+def create_workspace_chapter_note(request: Request, pdf_id: int, title: str = Form(...), body: str = Form(...), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    pdf=db.get_pdf(user['id'],pdf_id)
+    if not pdf: raise HTTPException(404)
+    if not title.strip() or not body.strip(): raise HTTPException(400, 'Enter a title and note text.')
+    db.add_note(user['id'], int(pdf['subject_id']), int(pdf['chapter_id']) if pdf['chapter_id'] else None, title.strip()[:200], body.strip()[:20000])
+    return RedirectResponse(f'/study/{pdf_id}#chapter-notes', 303)
+
 @app.get('/pdfs/{pdf_id}/text',response_class=HTMLResponse)
 def pdf_text(request: Request,pdf_id:int):
     user=require_user(request); p=db.get_pdf(user['id'],pdf_id)
@@ -681,6 +738,18 @@ def remove_pdf(request: Request,pdf_id:int,csrf_token:str=Form(...)):
     if not p: raise HTTPException(404)
     db.delete_pdf(user['id'],pdf_id)
     return RedirectResponse(f'/chapters/{p["chapter_id"]}' if p['chapter_id'] else f'/subjects/{p["subject_id"]}',303)
+
+@app.get('/quiz-revision', response_class=HTMLResponse)
+def quiz_revision(request: Request):
+    user = require_user(request)
+    subjects, chapters, stats = db.dashboard_data(user['id'])
+    return render(request, 'quiz_revision.html', {'subjects': subjects, 'chapters': chapters, 'stats': stats})
+
+@app.get('/analytics', response_class=HTMLResponse)
+def analytics(request: Request):
+    user = require_user(request)
+    subjects, chapters, stats = db.dashboard_data(user['id'])
+    return render(request, 'analytics.html', {'subjects': subjects, 'chapters': chapters, 'stats': stats})
 
 @app.get('/search',response_class=HTMLResponse)
 def search(request: Request,q:str=''):
