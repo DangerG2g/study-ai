@@ -674,8 +674,8 @@ def study_workspace(request: Request, pdf_id: int):
     pdf = db.get_pdf(user['id'], pdf_id)
     if not pdf:
         raise HTTPException(404)
-    if pdf['file_type'] != 'pdf':
-        raise HTTPException(400, 'The split workspace currently supports PDF files.')
+    if pdf['file_type'] not in {'pdf','doc','docx','ppt','pptx','jpg','jpeg','png','webp','gif'}:
+        raise HTTPException(400, 'This file type is not supported in the study workspace.')
     subject = db.get_subject(user['id'], int(pdf['subject_id']))
     chapter = db.get_chapter(user['id'], int(pdf['chapter_id'])) if pdf['chapter_id'] else None
     chapter_notes = db.list_notes(user['id'], int(pdf['chapter_id'])) if pdf['chapter_id'] else db.list_subject_notes(user['id'], int(pdf['subject_id']))
@@ -692,7 +692,6 @@ def create_sticky_note(request: Request, pdf_id: int, title: str = Form(...), bo
     user = require_user(request); require_csrf(request, csrf_token)
     pdf = db.get_pdf(user['id'], pdf_id)
     if not pdf: raise HTTPException(404)
-    if pdf['file_type'] != 'pdf': raise HTTPException(400, 'Sticky notes in the split workspace currently support PDF files.')
     if not title.strip() or not body.strip(): raise HTTPException(400, 'Enter a title and note text.')
     if color not in {'violet','yellow','mint','coral'}: color='violet'
     db.add_sticky_note(user['id'], int(pdf['subject_id']), int(pdf['chapter_id']) if pdf['chapter_id'] else None, pdf_id, title.strip()[:120], body.strip()[:12000], color)
