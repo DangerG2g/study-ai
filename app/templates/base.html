@@ -6,13 +6,6 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div class="ambient" aria-hidden="true">
-  <div class="ambient-grid"></div>
-  <i></i><i></i><i></i>
-  <span class="orb orb1"></span><span class="orb orb2"></span>
-  <span class="orb orb3"></span>
-  <div class="ambient-particles"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-</div>
 <div class="app-shell">
   <aside class="sidebar" aria-label="Main navigation">
     <a class="brand" href="/"><span class="brand-mark">✦</span><span>Knowly</span></a>
@@ -27,11 +20,27 @@
       <a href="/timer" class="nav-link{% if request.url.path.startswith('/timer') %} active{% endif %}">◷ <span>Study Timer</span></a>
       <a href="/analytics" class="nav-link{% if request.url.path.startswith('/analytics') %} active{% endif %}">◷ <span>Achievements</span></a>
     </nav>
-    <div class="side-label">MY SPACE</div>
-    <div class="mini-note">Explore your learning universe. Study, collect ideas, and grow every day.</div>
+    <div class="side-label">YOUR WORKSPACE</div>
+    <div class="mini-note">Your subjects, your pace, your progress.</div>
     <div class="sidebar-bottom">
       <div class="profile-mini"><div class="avatar">{{ user.username[0]|upper }}</div><div><b>{{ user.username }}</b><small>Student</small></div></div>
       <a class="profile-link" href="/change-password">⚙ Change password</a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="logout">↪ Log out</button></form>
+      <section class="sidebar-tools" aria-label="Personalize Knowly">
+        <div class="sidebar-tool-heading"><span>APPEARANCE</span><button type="button" id="themeCycleBtn" class="tiny-tool-btn" title="Cycle theme">Change</button></div>
+        <label class="theme-select-label" for="knowlyThemeSelect">Choose your theme</label>
+        <select id="knowlyThemeSelect" class="theme-select">
+          <option value="midnight">Midnight Purple</option><option value="light">Clean Light</option><option value="forest">Forest Green</option><option value="paper">Warm Paper</option><option value="ocean">Ocean Blue</option><option value="mono">Minimal Mono</option>
+        </select>
+        <div class="sidebar-tool-heading music-heading"><span>STUDY SOUNDS</span><span class="music-live-dot"></span></div>
+        <p class="music-caption">Pick a calm background mix.</p>
+        <div class="music-presets">
+          <a href="https://www.youtube.com/@LofiGirl" target="_blank" rel="noopener noreferrer" title="Open Lofi Girl">♫ Lo-fi beats</a>
+          <a href="https://www.youtube.com/results?search_query=lofi+rain+study+music" target="_blank" rel="noopener noreferrer" title="Find rain lo-fi mixes">☂ Rain &amp; lo-fi</a>
+          <a href="https://www.youtube.com/results?search_query=soft+lofi+guitar+instrumental+study" target="_blank" rel="noopener noreferrer" title="Find soft guitar study music">♬ Soft guitar</a>
+          <a href="https://www.youtube.com/results?search_query=lofi+piano+study+instrumental" target="_blank" rel="noopener noreferrer" title="Find piano study music">♫ Piano focus</a>
+          <a href="https://www.youtube.com/@ChillhopMusic" target="_blank" rel="noopener noreferrer" title="Open Chillhop Music">☕ Café chillhop</a>
+        </div>
+      </section>
     </div>
     {% endif %}
   </aside>
@@ -57,13 +66,6 @@ function speakText(text,button){
 }
 
 function stopSpeaking(){if('speechSynthesis' in window)speechSynthesis.cancel()}
-(function(){
-  const bg=document.querySelector('.ambient'); if(!bg) return;
-  let tx=0,ty=0,x=0,y=0;
-  document.addEventListener('mousemove',e=>{tx=(e.clientX/innerWidth-.5)*2;ty=(e.clientY/innerHeight-.5)*2});
-  function frame(){x+=(tx-x)*.025;y+=(ty-y)*.025;bg.style.setProperty('--mx',x);bg.style.setProperty('--my',y);requestAnimationFrame(frame)}
-  frame();
-})();
 function openModal(id){document.getElementById(id)?.classList.add('show')}
 function closeModal(id){document.getElementById(id)?.classList.remove('show')}
 document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.target.classList.remove('show')})
@@ -103,6 +105,17 @@ document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.
     const editVoice=e.target.closest('[data-edit-voice]'); if(editVoice){const f=document.getElementById('audioEditForm');if(!f)return;f.action='/audio-notes/'+editVoice.dataset.id+'/edit';document.getElementById('audioEditTitle').value=editVoice.dataset.title||'';document.getElementById('audioEditTranscript').value=editVoice.dataset.body||'';openModal('audioEditModal');return;}
     const listen=e.target.closest('[data-speak-text]'); if(listen){speakText(listen.dataset.speakText||'',listen);return;}
   });
+})();
+</script>
+
+<script>
+(function(){
+ const select=document.getElementById('knowlyThemeSelect'); if(!select)return;
+ const themes=['midnight','light','forest','paper','ocean','mono'];
+ function applyTheme(name,save){if(!themes.includes(name))name='midnight';document.documentElement.dataset.theme=name;select.value=name;if(save){try{localStorage.setItem('knowly-theme',name)}catch(e){}}}
+ let saved='midnight';try{saved=localStorage.getItem('knowly-theme')||'midnight'}catch(e){}applyTheme(saved,false);
+ select.addEventListener('change',()=>applyTheme(select.value,true));
+ document.getElementById('themeCycleBtn')?.addEventListener('click',()=>{const i=themes.indexOf(select.value);applyTheme(themes[(i+1)%themes.length],true)});
 })();
 </script>
 {% block scripts %}{% endblock %}

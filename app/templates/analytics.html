@@ -13,6 +13,12 @@
     <article class="l9-metric"><span class="l9-metric-icon">◎</span><small>QUIZ ATTEMPTS</small><strong>{{ analytics.quiz.attempts }}</strong><p>Average score {{ '%.0f'|format(analytics.quiz.average_score or 0) }}%</p></article>
     <article class="l9-metric"><span class="l9-metric-icon">⌁</span><small>TIME TODAY</small><strong>{{ timer_totals.today_seconds // 3600 }}h {{ (timer_totals.today_seconds % 3600) // 60 }}m</strong><p>Based on saved sessions</p></article>
   </section>
+  <section class="l9-panel l9-week-panel">
+    <div class="l9-heading"><div><span class="l9-eyebrow">YOUR ROUTINE</span><h2>Study activity · last 7 days</h2><p>Based on saved timer sessions, not planned timetable minutes.</p></div><span class="l9-chip">Daily minutes</span></div>
+    <div class="l9-week-chart" role="img" aria-label="Bar chart of focused study minutes over the last seven days">
+      {% for day in study_week %}<div class="l9-week-day" title="{{ day.date }}: {{ day.minutes }} minutes"><div class="l9-week-bar-area"><div class="l9-week-bar{% if day.minutes > 0 %} has-time{% endif %}" style="height:{{ [((day.minutes / max_week_minutes) * 100)|round|int, 6]|max }}%"><span>{{ day.minutes }}m</span></div></div><strong>{{ day.label }}</strong><small>{{ day.date }}</small></div>{% endfor %}
+    </div>
+  </section>
   <section class="l9-panel">
     <div class="l9-heading"><div><span class="l9-eyebrow">MILESTONES</span><h2>Achievements</h2><p>Earn these through real, saved activity. No manual claiming needed.</p></div><span class="l9-chip">{{ milestones|selectattr('unlocked')|list|length }} / {{ milestones|length }} unlocked</span></div>
     <div class="l9-achievements">
