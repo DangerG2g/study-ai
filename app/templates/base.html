@@ -31,14 +31,25 @@
         <select id="knowlyThemeSelect" class="theme-select">
           <option value="midnight">Midnight Purple</option><option value="light">Clean Light</option><option value="forest">Forest Green</option><option value="paper">Warm Paper</option><option value="ocean">Ocean Blue</option><option value="mono">Minimal Mono</option>
         </select>
-        <div class="sidebar-tool-heading music-heading"><span>STUDY SOUNDS</span><span class="music-live-dot"></span></div>
-        <p class="music-caption">Pick a calm background mix.</p>
-        <div class="music-presets">
-          <a href="https://www.youtube.com/@LofiGirl" target="_blank" rel="noopener noreferrer" title="Open Lofi Girl">♫ Lo-fi beats</a>
-          <a href="https://www.youtube.com/results?search_query=lofi+rain+study+music" target="_blank" rel="noopener noreferrer" title="Find rain lo-fi mixes">☂ Rain &amp; lo-fi</a>
-          <a href="https://www.youtube.com/results?search_query=soft+lofi+guitar+instrumental+study" target="_blank" rel="noopener noreferrer" title="Find soft guitar study music">♬ Soft guitar</a>
-          <a href="https://www.youtube.com/results?search_query=lofi+piano+study+instrumental" target="_blank" rel="noopener noreferrer" title="Find piano study music">♫ Piano focus</a>
-          <a href="https://www.youtube.com/@ChillhopMusic" target="_blank" rel="noopener noreferrer" title="Open Chillhop Music">☕ Café chillhop</a>
+        <div class="sidebar-tool-heading music-heading"><span>STUDY AUDIO</span><span class="music-live-dot" id="studyAudioDot"></span></div>
+        <p class="music-caption">Original ambient loops · stays inside Knowly.</p>
+        <div class="study-audio-player" id="studyAudioPlayer">
+          <label class="theme-select-label" for="studyAudioSelect">Choose a sound</label>
+          <select id="studyAudioSelect" class="theme-select">
+            <option value="lofi-beats.mp3">Lo-fi beats</option>
+            <option value="rain-window.mp3">Rain on the window</option>
+            <option value="soft-guitar.mp3">Soft guitar</option>
+            <option value="piano-focus.mp3">Gentle piano</option>
+            <option value="forest-ambience.mp3">Forest ambience</option>
+          </select>
+          <audio id="studyAudioElement" preload="none" loop></audio>
+          <div class="study-audio-controls">
+            <button type="button" id="studyAudioPlay" class="study-audio-play" aria-label="Play study audio">▶ Play</button>
+            <button type="button" id="studyAudioStop" class="study-audio-stop" aria-label="Stop study audio">■</button>
+            <label class="study-audio-volume" for="studyAudioVolume">Volume</label>
+            <input id="studyAudioVolume" type="range" min="0" max="1" step="0.05" value="0.35" aria-label="Audio volume">
+          </div>
+          <p class="study-audio-status" id="studyAudioStatus" aria-live="polite">Ready to play · loops automatically</p>
         </div>
       </section>
     </div>
@@ -105,6 +116,30 @@ document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.
     const editVoice=e.target.closest('[data-edit-voice]'); if(editVoice){const f=document.getElementById('audioEditForm');if(!f)return;f.action='/audio-notes/'+editVoice.dataset.id+'/edit';document.getElementById('audioEditTitle').value=editVoice.dataset.title||'';document.getElementById('audioEditTranscript').value=editVoice.dataset.body||'';openModal('audioEditModal');return;}
     const listen=e.target.closest('[data-speak-text]'); if(listen){speakText(listen.dataset.speakText||'',listen);return;}
   });
+})();
+</script>
+
+<script>
+(function(){
+ const select=document.getElementById('studyAudioSelect');
+ const audio=document.getElementById('studyAudioElement');
+ const play=document.getElementById('studyAudioPlay');
+ const stop=document.getElementById('studyAudioStop');
+ const volume=document.getElementById('studyAudioVolume');
+ const status=document.getElementById('studyAudioStatus');
+ const dot=document.getElementById('studyAudioDot');
+ if(!select||!audio||!play)return;
+ const tracks={'lofi-beats.mp3':'Lo-fi beats','rain-window.mp3':'Rain on the window','soft-guitar.mp3':'Soft guitar','piano-focus.mp3':'Gentle piano','forest-ambience.mp3':'Forest ambience'};
+ let wantedPlay=false;
+ function setTrack(filename){const next='/static/audio/'+filename;if(!audio.src.endsWith(next)){audio.src=next;audio.load();}try{localStorage.setItem('knowly-study-audio-track',filename)}catch(e){}}
+ try{const saved=localStorage.getItem('knowly-study-audio-track');if(saved&&tracks[saved])select.value=saved}catch(e){}
+ audio.loop=true;audio.volume=Number(volume?.value||0.35);setTrack(select.value);
+ select.addEventListener('change',()=>{const resume=!audio.paused||wantedPlay;setTrack(select.value);status.textContent=tracks[select.value]+' selected · loops automatically';if(resume){wantedPlay=true;audio.play().then(()=>{status.textContent='Playing '+tracks[select.value]+' · looping'}).catch(()=>{status.textContent='Press Play to start the selected audio'})}});
+ play.addEventListener('click',()=>{if(audio.paused){wantedPlay=true;audio.play().then(()=>{play.textContent='❚❚ Pause';status.textContent='Playing '+tracks[select.value]+' · looping';if(dot)dot.classList.add('is-playing')}).catch(()=>{status.textContent='Could not play audio. Refresh and try again.'})}else{audio.pause();wantedPlay=false;play.textContent='▶ Play';status.textContent='Paused';if(dot)dot.classList.remove('is-playing')}});
+ stop?.addEventListener('click',()=>{audio.pause();audio.currentTime=0;wantedPlay=false;play.textContent='▶ Play';status.textContent='Stopped';if(dot)dot.classList.remove('is-playing')});
+ volume?.addEventListener('input',()=>{audio.volume=Number(volume.value)});
+ audio.addEventListener('error',()=>{status.textContent='Audio unavailable. Ensure app/static/audio files were uploaded.'});
+ audio.addEventListener('play',()=>{play.textContent='❚❚ Pause';if(dot)dot.classList.add('is-playing')});audio.addEventListener('pause',()=>{play.textContent='▶ Play';if(dot)dot.classList.remove('is-playing')});
 })();
 </script>
 
