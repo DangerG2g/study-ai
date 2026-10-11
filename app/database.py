@@ -508,10 +508,10 @@ def quiz_progress(user_id):
     with connect() as conn:
         summary=conn.execute("""SELECT COUNT(*)::int AS attempts,COALESCE(AVG(percentage),0)::float AS average,
             COALESCE(MAX(percentage),0)::float AS best FROM quiz_attempts WHERE user_id=%s""",(user_id,)).fetchone()
-        by_subject=conn.execute("""SELECT s.name AS subject_name,COUNT(a.id)::int AS attempts,
+        by_subject=conn.execute('''SELECT s.name AS subject_name,COUNT(a.id)::int AS attempts,
             COALESCE(AVG(a.percentage),0)::float AS average
             FROM quiz_attempts a JOIN subjects s ON s.id=a.subject_id WHERE a.user_id=%s
-            GROUP BY s.id,s.name ORDER BY s.name COLLATE "C""",(user_id,)).fetchall()
+            GROUP BY s.id,s.name ORDER BY s.name COLLATE "C"''',(user_id,)).fetchall()
     return summary,by_subject
 
 def save_flashcard_deck(user_id, subject_id, chapter_id, cards):
