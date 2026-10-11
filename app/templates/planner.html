@@ -44,7 +44,8 @@
     </section>
 
     <section class="planner-schedule-section">
-      <div class="planner-builder-heading"><div><span class="cosmic-kicker">02 · YOUR TIMETABLE</span><h2>{% if selected_program %}{{ selected_program.title }}{% else %}Schedule overview{% endif %}</h2><p>{% if selected_program %}{{ selected_program.days }} days · {{ (selected_program.daily_minutes / 60)|round(1) }} hours per day · {{ program_chapters|length }} active chapters · {{ (planned_minutes / 60)|round(1) }} planned hours shown{% else %}Create a custom plan to see the schedule here.{% endif %}</p></div><span class="cosmic-chip">{{ program_tasks|length }} SESSIONS</span></div>
+      <div class="planner-builder-heading planner-timetable-heading"><div><span class="cosmic-kicker">02 · YOUR TIMETABLE</span><h2>{% if selected_program %}{{ selected_program.title }}{% else %}Schedule overview{% endif %}</h2><p>{% if selected_program %}{{ selected_program.days }} days · {{ (selected_program.daily_minutes / 60)|round(1) }} hours per day · {{ program_chapters|length }} active chapters · {{ (planned_minutes / 60)|round(1) }} planned hours shown{% else %}Create a custom plan to see the schedule here.{% endif %}</p></div><div class="planner-timetable-heading-actions"><span class="cosmic-chip">{{ program_tasks|length }} SESSIONS</span><button type="button" class="planner-collapse-btn" id="togglePlannerTimetable" aria-expanded="true" aria-controls="plannerTimetableContent"><span class="planner-collapse-chevron" aria-hidden="true">⌃</span><span class="planner-collapse-label">Minimize timetable</span></button></div></div>
+      <div id="plannerTimetableContent" class="planner-timetable-content">
       {% if selected_program %}
       <div class="planner-timetable-toolbar"><label>Filter sessions<select id="plannerStatusFilter"><option value="all">All sessions</option><option value="pending">Pending only</option><option value="completed">Completed only</option></select></label><label>Find a chapter<input id="plannerTableSearch" type="search" placeholder="Search subject or chapter"></label><a class="planner-action" href="/planner">View latest plan</a></div>
       <div class="planner-table-wrap"><table class="planner-table" id="plannerTimetable"><thead><tr><th>Day / Date</th><th>Subject</th><th>Chapter / Activity</th><th>Duration</th><th>Status</th><th>Actions</th></tr></thead><tbody>
@@ -57,6 +58,7 @@
       </tbody></table></div>
       <p id="plannerNoFilterResults" class="planner-empty-cell" hidden>No sessions match this filter.</p>
       {% else %}<div class="planner-empty-table"><span>▦</span><strong>Your timetable will appear here</strong><p>Choose subjects, chapters, days and daily study hours, then save your first plan.</p></div>{% endif %}
+      </div>
     </section>
 
     <section class="planner-oneoff-section">
@@ -86,6 +88,8 @@
  const statusFilter=document.getElementById('plannerStatusFilter'),search=document.getElementById('plannerTableSearch'),table=document.getElementById('plannerTimetable'),empty=document.getElementById('plannerNoFilterResults');
  function filterTable(){if(!table)return;let visible=0;table.querySelectorAll('.planner-session-row').forEach(row=>{const statusOk=!statusFilter||statusFilter.value==='all'||row.dataset.status===statusFilter.value;const q=(search?.value||'').trim().toLowerCase();const searchOk=!q||(row.dataset.search||'').includes(q);row.hidden=!(statusOk&&searchOk);if(!row.hidden)visible++;});if(empty)empty.hidden=visible>0;}
  statusFilter?.addEventListener('change',filterTable);search?.addEventListener('input',filterTable);filterTable();
+ const collapseButton=document.getElementById('togglePlannerTimetable'),timetableContent=document.getElementById('plannerTimetableContent');
+ if(collapseButton&&timetableContent){collapseButton.addEventListener('click',()=>{const isOpen=collapseButton.getAttribute('aria-expanded')==='true';collapseButton.setAttribute('aria-expanded',String(!isOpen));timetableContent.hidden=isOpen;collapseButton.querySelector('.planner-collapse-label').textContent=isOpen?'Expand timetable':'Minimize timetable';collapseButton.querySelector('.planner-collapse-chevron').textContent=isOpen?'⌄':'⌃';});}
  const programSelect=document.getElementById('plannerProgramSelect');programSelect?.addEventListener('change',()=>{window.location.href=programSelect.value?('/planner?program_id='+encodeURIComponent(programSelect.value)):'/planner?new=1';});
 })();
 </script>

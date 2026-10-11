@@ -1,4 +1,9 @@
-{% extends 'base.html' %}{% block title %}Dashboard · Knowly{% endblock %}
+{% extends 'base.html' %}{% block title %}Dashboard · Knowly{% block scripts %}
+<script>
+(function(){const modal=document.getElementById('dashboardTimetableModal');if(!modal)return;const openers=[document.getElementById('openDashboardTimetable'),...document.querySelectorAll('[data-open-timetable]')].filter(Boolean);function open(){modal.hidden=false;document.body.classList.add('dashboard-modal-open');const close=modal.querySelector('.dashboard-timetable-close');close&&close.focus();}function close(){modal.hidden=true;document.body.classList.remove('dashboard-modal-open');}openers.forEach(b=>b.addEventListener('click',open));modal.querySelectorAll('[data-close-timetable]').forEach(b=>b.addEventListener('click',close));document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!modal.hidden)close();});})();
+</script>
+{% endblock %}
+{% endblock %}
 {% block crumb %}Dashboard{% endblock %}
 {% block content %}
 <div class="knowly-universe-page">
@@ -25,6 +30,37 @@
     <div class="metric-orb metric-pink"><span class="metric-glyph">✎</span><div><small>NOTES</small><strong>{{ stats.notes }}</strong><span>ideas collected</span></div></div>
     <div class="metric-orb metric-amber"><span class="metric-glyph">▧</span><div><small>MATERIALS</small><strong>{{ stats.pdfs }}</strong><span>saved resources</span></div></div>
   </section>
+
+  <section class="dashboard-planner-section">
+    <div class="dashboard-planner-heading">
+      <div><span class="universe-kicker">YOUR NEXT STEPS</span><h2>Study Planner</h2><p>Your schedule, completion status, and next sessions — right on the dashboard.</p></div>
+      <div class="dashboard-planner-actions"><button type="button" class="dashboard-planner-btn secondary" id="openDashboardTimetable">▦ View timetable</button><a class="dashboard-planner-btn primary" href="/planner">＋ Manage plan</a></div>
+    </div>
+    <div class="dashboard-planner-overview">
+      <div class="dashboard-planner-metric"><span>Pending sessions</span><strong>{{ planner_pending_count|default(0) }}</strong><small>Still to work through</small></div>
+      <div class="dashboard-planner-metric"><span>Completed sessions</span><strong>{{ planner_completed_count|default(0) }}</strong><small>Saved progress</small></div>
+      <div class="dashboard-planner-metric dashboard-planner-metric-highlight"><span>Next scheduled task</span><strong>{% if dashboard_planner_tasks %}{{ dashboard_planner_tasks[0].chapter_name or dashboard_planner_tasks[0].title }}{% else %}Ready to plan{% endif %}</strong><small>{% if dashboard_planner_tasks %}{{ dashboard_planner_tasks[0].due_date.strftime('%a, %d %b') }} · {{ dashboard_planner_tasks[0].duration_minutes }} min{% else %}Create your first timetable{% endif %}</small></div>
+    </div>
+    <div class="dashboard-planner-table-wrap"><table class="dashboard-planner-table"><thead><tr><th>Schedule</th><th>Subject &amp; chapter</th><th>Duration</th><th>Status</th><th></th></tr></thead><tbody>
+      {% for task in dashboard_planner_tasks %}<tr><td><strong>{{ task.due_date.strftime('%a, %d %b') }}</strong><small>{{ task.title }}</small></td><td><strong>{{ task.subject_name }}</strong><small>{{ task.chapter_name or task.title }}</small></td><td>{{ task.duration_minutes }} min</td><td><span class="dashboard-planner-status {% if task.completed %}is-done{% else %}is-pending{% endif %}">{{ 'Completed' if task.completed else 'Upcoming' }}</span></td><td><button type="button" class="dashboard-row-open" data-open-timetable>↗</button></td></tr>
+      {% else %}<tr><td colspan="5" class="dashboard-planner-empty">No study sessions yet. Build your first schedule to see it here.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+
+  <div class="dashboard-timetable-modal" id="dashboardTimetableModal" hidden role="dialog" aria-modal="true" aria-labelledby="dashboardTimetableTitle">
+    <div class="dashboard-timetable-backdrop" data-close-timetable></div>
+    <section class="dashboard-timetable-dialog">
+      <header class="dashboard-timetable-dialog-head"><div><span class="universe-kicker">YOUR SAVED SCHEDULE</span><h2 id="dashboardTimetableTitle">Timetable overview</h2><p>Complete, edit, move, or reopen sessions without leaving your dashboard.</p></div><button type="button" class="dashboard-timetable-close" data-close-timetable aria-label="Close timetable">×</button></header>
+      <div class="dashboard-timetable-modal-table-wrap"><table class="dashboard-planner-table dashboard-modal-table"><thead><tr><th>Date</th><th>Subject / chapter</th><th>Duration</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+      {% for task in planner_tasks[:40] %}<tr><td><strong>{{ task.due_date.strftime('%a, %d %b %Y') }}</strong><small>{{ task.title }}</small></td><td><strong>{{ task.subject_name }}</strong><small>{% if task.chapter_name %}{{ task.chapter_name }}{% else %}General task{% endif %}</small></td><td>{{ task.duration_minutes }} min</td><td><span class="dashboard-planner-status {% if task.completed %}is-done{% else %}is-pending{% endif %}">{{ 'Completed' if task.completed else 'Pending' }}</span></td><td><div class="dashboard-modal-actions">
+        {% if not task.completed %}<form method="post" action="/planner/tasks/{{ task.id }}/complete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="program_id" value="{{ task.program_id or '' }}"><input type="hidden" name="return_to" value="/"><button class="dashboard-modal-action" type="submit">✓ Done</button></form>{% else %}<form method="post" action="/planner/tasks/{{ task.id }}/reopen"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="program_id" value="{{ task.program_id or '' }}"><input type="hidden" name="return_to" value="/"><button class="dashboard-modal-action" type="submit">↶ Reopen</button></form>{% endif %}
+        <details class="dashboard-modal-edit"><summary>Edit</summary><form method="post" action="/planner/tasks/{{ task.id }}/edit"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="program_id" value="{{ task.program_id or '' }}"><input type="hidden" name="return_to" value="/"><label>Activity<input name="title" maxlength="160" value="{{ task.title }}" required></label><label>Minutes<input name="duration_minutes" type="number" min="5" max="720" value="{{ task.duration_minutes }}" required></label><label>Type<select name="task_type">{% for typ in ['read','revise','practice','quiz','flashcards','audio'] %}<option value="{{ typ }}" {% if task.task_type == typ %}selected{% endif %}>{{ typ|title }}</option>{% endfor %}</select></label><button class="dashboard-modal-action" type="submit">Save changes</button></form></details>
+        <details class="dashboard-modal-edit"><summary>Move</summary><form method="post" action="/planner/tasks/{{ task.id }}/reschedule"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="program_id" value="{{ task.program_id or '' }}"><input type="hidden" name="return_to" value="/"><label>New date<input name="due_date" type="date" value="{{ task.due_date.isoformat() }}" required></label><button class="dashboard-modal-action" type="submit">Reschedule</button></form></details>
+      </div></td></tr>{% else %}<tr><td colspan="5" class="dashboard-planner-empty">No sessions yet. Create a plan to populate this timetable.</td></tr>{% endfor %}
+      </tbody></table></div>
+      <footer class="dashboard-timetable-dialog-foot"><span>Showing up to 40 saved sessions.</span><a class="dashboard-planner-btn primary" href="/planner">Open full planner ↗</a></footer>
+    </section>
+  </div>
 
   <section class="universe-library">
     <div class="universe-section-heading"><div><span class="universe-kicker">YOUR WORLDS</span><h2>Explore your subjects</h2><p>Jump back into a subject or create a new world to learn something different.</p></div><button class="universe-outline-btn" onclick="openModal('subjectModal')">＋ New subject</button></div>
