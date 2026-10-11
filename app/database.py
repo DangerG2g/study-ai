@@ -522,6 +522,26 @@ def save_flashcard_deck(user_id, subject_id, chapter_id, cards):
         return row['id']
 
 
+def list_recent_study_quiz_questions(user_id, subject_id, chapter_id, limit=10):
+    """Return recent generated question text for this exact subject/chapter, to reduce repeats."""
+    with connect() as conn:
+        if chapter_id is None:
+            rows = conn.execute("""SELECT questions FROM study_quizzes
+                WHERE user_id=%s AND subject_id=%s AND chapter_id IS NULL
+                ORDER BY created_at DESC LIMIT %s""", (user_id, subject_id, limit)).fetchall()
+        else:
+            rows = conn.execute("""SELECT questions FROM study_quizzes
+                WHERE user_id=%s AND subject_id=%s AND chapter_id=%s
+                ORDER BY created_at DESC LIMIT %s""", (user_id, subject_id, chapter_id, limit)).fetchall()
+    seen = []
+    for row in rows:
+        questions = row.get('questions') or []
+        for question in questions:
+            if isinstance(question, dict) and isinstance(question.get('question'), str):
+                seen.append(question['question'][:500])
+    return seen[:100]
+
+
 def list_chapter_saved_quizzes(user_id, chapter_id, limit=10):
     """Saved generated quizzes for one chapter, newest first."""
     with connect() as conn:
