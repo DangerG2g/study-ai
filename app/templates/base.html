@@ -173,5 +173,88 @@ document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.
  });
 })();
 </script>
+
+<script>
+/* Keep the sidebar and its audio element mounted during ordinary same-site navigation. */
+(function () {
+  if (window.__knowlyPersistentAudioNavigation) return;
+  window.__knowlyPersistentAudioNavigation = true;
+
+  async function navigate(url, pushState) {
+    const target = new URL(url, location.href);
+    if (target.origin !== location.origin || target.pathname === '/logout' ||
+        target.pathname.startsWith('/static/') || target.pathname.startsWith('/uploads/')) {
+      location.href = target.href;
+      return;
+    }
+
+    const currentContent = document.querySelector('main.main .content');
+    if (!currentContent) { location.href = target.href; return; }
+
+    currentContent.setAttribute('aria-busy', 'true');
+    try {
+      const response = await fetch(target.href, {
+        headers: { 'X-Requested-With': 'KnowlyNavigation' }
+      });
+      const type = response.headers.get('content-type') || '';
+      if (!response.ok || !type.includes('text/html')) {
+        location.href = target.href;
+        return;
+      }
+      const html = await response.text();
+      const nextDoc = new DOMParser().parseFromString(html, 'text/html');
+      const nextContent = nextDoc.querySelector('main.main .content');
+      if (!nextContent) { location.href = target.href; return; }
+
+      currentContent.innerHTML = nextContent.innerHTML;
+      const crumb = document.querySelector('main.main .topbar .crumb');
+      const nextCrumb = nextDoc.querySelector('main.main .topbar .crumb');
+      if (crumb && nextCrumb) crumb.innerHTML = nextCrumb.innerHTML;
+      document.title = nextDoc.title || document.title;
+      if (pushState) history.pushState({ knowlyNavigation: true }, '', target.href);
+
+      document.querySelectorAll('.sidebar nav a.nav-link').forEach(link => {
+        const path = new URL(link.href, location.origin).pathname;
+        link.classList.toggle('active', path === target.pathname ||
+          (path !== '/' && target.pathname.startsWith(path)));
+      });
+
+      /* Re-run page-local scripts only; the sidebar/audio script is left untouched. */
+      currentContent.querySelectorAll('script').forEach(oldScript => {
+        const fresh = document.createElement('script');
+        for (const attr of oldScript.attributes) fresh.setAttribute(attr.name, attr.value);
+        fresh.textContent = oldScript.textContent;
+        oldScript.replaceWith(fresh);
+      });
+      window.scrollTo(0, 0);
+      document.dispatchEvent(new CustomEvent('knowly:pagechange', {
+        detail: { path: target.pathname }
+      }));
+    } catch (error) {
+      location.href = target.href;
+    } finally {
+      currentContent.removeAttribute('aria-busy');
+    }
+  }
+
+  document.addEventListener('click', event => {
+    const link = event.target.closest('a[href]');
+    if (!link || event.defaultPrevented || event.button !== 0 ||
+        event.metaKey || event.ctrlKey || event.shiftKey || event.altKey ||
+        link.target === '_blank' || link.hasAttribute('download') ||
+        link.closest('form')) return;
+    const url = new URL(link.href, location.href);
+    if (url.origin !== location.origin || url.pathname === '/logout' ||
+        url.pathname.startsWith('/static/') || url.pathname.startsWith('/uploads/') ||
+        url.pathname.startsWith('/materials/') || url.pathname.startsWith('/pdf/')) return;
+    if (url.pathname === location.pathname && url.search === location.search && url.hash) return;
+    event.preventDefault();
+    navigate(url.href, true);
+  });
+
+  window.addEventListener('popstate', () => navigate(location.href, false));
+})();
+</script>
+
 {% block scripts %}{% endblock %}
 </body></html>
