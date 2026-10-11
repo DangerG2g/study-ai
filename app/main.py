@@ -333,7 +333,7 @@ def remove_chapter(request: Request, chapter_id: int, csrf_token: str = Form(...
 def chapter(request: Request, chapter_id: int):
     user=require_user(request); c=db.get_chapter(user['id'],chapter_id)
     if not c: raise HTTPException(404)
-    return render(request,'chapter.html',{'chapter':c,'notes':db.list_notes(user['id'],chapter_id),'pdfs':db.list_pdfs(user['id'],chapter_id),'saved_quizzes':db.list_chapter_saved_quizzes(user['id'],chapter_id,10),'chapter_attempts':db.list_chapter_quiz_attempts(user['id'],chapter_id,10),'saved_decks':db.list_flashcard_decks(user['id'],chapter_id,10)})
+    return render(request,'chapter.html',{'chapter':c,'notes':db.list_notes(user['id'],chapter_id),'pdfs':db.list_pdfs(user['id'],chapter_id),'saved_quizzes':db.list_chapter_saved_quizzes(user['id'],chapter_id,10),'chapter_attempts':db.list_chapter_quiz_attempts(user['id'],chapter_id,10),'saved_decks':db.list_flashcard_decks(user['id'],chapter_id,10),'audio_status':request.query_params.get('audio_status','')})
 
 @app.post('/chapters/{chapter_id}/notes')
 def create_note(request: Request, chapter_id: int, title: str = Form(...), body: str = Form(...), csrf_token: str = Form(...)):
@@ -755,6 +755,42 @@ async def save_audio_note(request: Request, subject_id: int = Form(...), chapter
     audio_id=db.add_audio_note(user['id'],subject_id,chapter,title.strip() or 'Voice note',clean_transcript,data,mime)
     if not audio_id: raise HTTPException(500,'The voice note could not be saved. Please try again.')
     return RedirectResponse(f'/chapters/{chapter}' if chapter else f'/subjects/{subject_id}',303)
+
+@app.post('/audio-notes/{audio_id}/transcribe')
+def retranscribe_audio_note(request: Request, audio_id: int, csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    audio=db.get_audio_note(user['id'],audio_id)
+    if not audio:
+        raise HTTPException(404,'Voice note not found.')
+    note=db.get_note(user['id'],audio['note_id'])
+    if not note:
+        raise HTTPException(404,'Voice note text record not found.')
+    chapter_id=audio['chapter_id']
+    location=f'/chapters/{chapter_id}' if chapter_id else f'/subjects/{audio["subject_id"]}'
+    if not os.getenv('GROQ_API_KEY'):
+        return RedirectResponse(location + '?audio_status=missing_key',303)
+    audio_bytes=bytes(audio['data'] or b'')
+    if not audio_bytes:
+        return RedirectResponse(location + '?audio_status=empty_audio',303)
+    try:
+        from openai import OpenAI
+        client=OpenAI(api_key=os.getenv('GROQ_API_KEY'),base_url='https://api.groq.com/openai/v1')
+        mime=(audio.get('mime_type') or 'audio/webm').split(';',1)[0].strip().lower()
+        extension={'audio/webm':'webm','audio/mp4':'m4a','audio/mpeg':'mp3','audio/mp3':'mp3','audio/wav':'wav','audio/ogg':'ogg','audio/flac':'flac','audio/x-m4a':'m4a'}.get(mime,'webm')
+        result=client.audio.transcriptions.create(
+            model=os.getenv('GROQ_TRANSCRIPTION_MODEL','whisper-large-v3-turbo'),
+            file=(f'knowly-voice-note.{extension}',audio_bytes,mime),
+            response_format='json'
+        )
+        transcript=(getattr(result,'text','') or '').strip()
+        if not transcript:
+            return RedirectResponse(location + '?audio_status=empty_transcript',303)
+        db.update_note(user['id'],note['id'],note['title'],transcript)
+        return RedirectResponse(location + '?audio_status=success',303)
+    except Exception as exc:
+        print(f'Groq audio transcription failed: {type(exc).__name__}: {str(exc)[:300]}')
+        return RedirectResponse(location + '?audio_status=failed',303)
+
 
 @app.post('/audio-notes/{audio_id}/edit')
 def edit_audio_note(request: Request, audio_id: int, title: str = Form(...), transcript: str = Form(...), csrf_token: str = Form(...)):
