@@ -110,12 +110,29 @@ document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.
 
 <script>
 (function(){
- const select=document.getElementById('knowlyThemeSelect'); if(!select)return;
+ const select=document.getElementById('knowlyThemeSelect');
  const themes=['midnight','light','forest','paper','ocean','mono'];
- function applyTheme(name,save){if(!themes.includes(name))name='midnight';document.documentElement.dataset.theme=name;select.value=name;if(save){try{localStorage.setItem('knowly-theme',name)}catch(e){}}}
- let saved='midnight';try{saved=localStorage.getItem('knowly-theme')||'midnight'}catch(e){}applyTheme(saved,false);
- select.addEventListener('change',()=>applyTheme(select.value,true));
- document.getElementById('themeCycleBtn')?.addEventListener('click',()=>{const i=themes.indexOf(select.value);applyTheme(themes[(i+1)%themes.length],true)});
+ const labels={midnight:'Midnight Purple',light:'Clean Light',forest:'Forest Green',paper:'Warm Paper',ocean:'Ocean Blue',mono:'Minimal Mono'};
+ function applyTheme(name,save){
+   if(!themes.includes(name)) name='midnight';
+   document.documentElement.setAttribute('data-theme',name);
+   document.documentElement.style.colorScheme=(name==='light'||name==='paper')?'light':'dark';
+   if(select) select.value=name;
+   if(save){try{localStorage.setItem('knowly-theme',name)}catch(e){}}
+   document.dispatchEvent(new CustomEvent('knowly:themechange',{detail:{theme:name,label:labels[name]}}));
+ }
+ let saved='midnight';
+ try{saved=localStorage.getItem('knowly-theme')||'midnight'}catch(e){}
+ applyTheme(saved,false);
+ if(select){
+   select.addEventListener('input',()=>applyTheme(select.value,true));
+   select.addEventListener('change',()=>applyTheme(select.value,true));
+ }
+ document.getElementById('themeCycleBtn')?.addEventListener('click',()=>{
+   const current=select?.value||document.documentElement.dataset.theme||'midnight';
+   const i=themes.indexOf(current);applyTheme(themes[(i+1)%themes.length],true);
+   if(select){select.focus();}
+ });
 })();
 </script>
 {% block scripts %}{% endblock %}
