@@ -757,3 +757,26 @@ table{color:var(--theme-text)!important}th,.planner-table th,.dashboard-planner-
 /* Theme previews should feel like a standard productivity app, not a sci-fi/space UI. */
 .ambient,.ambient-grid,.ambient-particles,.orb,.ambient i{display:none!important}
 @media(max-width:700px){.sidebar-tools{margin-bottom:14px}.sidebar-bottom{padding-bottom:18px}}
+
+/* Knowly appearance + built-in study audio: clean, compact, non-space UI */
+.sidebar-tools{margin-top:14px;padding:13px;border:1px solid var(--border-color,rgba(148,163,184,.2));border-radius:14px;background:var(--card-bg,rgba(255,255,255,.035));}
+.sidebar-tool-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.72rem;font-weight:800;letter-spacing:.09em;}
+.theme-select-label{display:block;margin:10px 0 6px;font-size:.78rem;color:var(--muted,#aab1c4);}
+.theme-select{display:block;width:100%;min-width:0;max-width:100%;padding:9px 10px;border-radius:9px;border:1px solid var(--border-color,rgba(148,163,184,.25));background:var(--input-bg,#202438);color:var(--text-color,#f3f4f6);font:inherit;font-size:.84rem;}
+.music-caption{font-size:.76rem;line-height:1.45;color:var(--muted,#aab1c4);margin:7px 0 10px;}
+.study-audio-player{min-width:0;padding:10px;border:1px solid var(--border-color,rgba(148,163,184,.2));border-radius:11px;background:var(--panel-bg,rgba(0,0,0,.12));}
+.study-audio-controls{display:grid;grid-template-columns:auto auto minmax(0,1fr);align-items:center;gap:7px;margin-top:10px;}
+.study-audio-play,.study-audio-stop{border:0;border-radius:8px;padding:8px 10px;font:inherit;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap;background:var(--accent-color,#8b5cf6);color:white;}
+.study-audio-stop{background:var(--panel-button,#3c4054);}
+.study-audio-volume{grid-column:1 / 2;font-size:.72rem;color:var(--muted,#aab1c4);}
+#studyAudioVolume{grid-column:2 / 4;width:100%;min-width:0;accent-color:var(--accent-color,#8b5cf6);}
+.study-audio-status{margin:9px 0 0;font-size:.72rem;line-height:1.4;color:var(--muted,#aab1c4);min-height:1em;}
+.music-live-dot{width:7px;height:7px;border-radius:50%;background:#9ca3af;display:inline-block;flex:0 0 auto;}
+.music-live-dot.is-playing{background:#34d399;box-shadow:0 0 0 4px rgba(52,211,153,.13);}
+.tiny-tool-btn{border:1px solid var(--border-color,rgba(148,163,184,.25));background:transparent;color:var(--text-color,inherit);border-radius:7px;padding:5px 8px;font:inherit;font-size:.72rem;cursor:pointer;}
+html[data-theme="light"] .sidebar-tools,html[data-theme="paper"] .sidebar-tools{--card-bg:#fff;--panel-bg:#f7f7fb;--input-bg:#fff;--text-color:#222536;--muted:#626779;--border-color:#dfe2ec;--panel-button:#e8eaf2;}
+html[data-theme="forest"] .sidebar-tools{--accent-color:#22a06b;--input-bg:#182923;--panel-button:#2c4037;}
+html[data-theme="ocean"] .sidebar-tools{--accent-color:#38bdf8;--input-bg:#14253a;--panel-button:#2b3c52;}
+html[data-theme="mono"] .sidebar-tools{--accent-color:#858585;--input-bg:#242424;--panel-button:#414141;}
+html[data-theme="paper"] .sidebar-tools{--accent-color:#b77936;--input-bg:#fffaf1;--panel-button:#eee1cf;}
+@media(max-width:900px){.sidebar-tools{margin-bottom:14px}.study-audio-controls{grid-template-columns:auto auto minmax(0,1fr)}.study-audio-player{padding:9px}}
