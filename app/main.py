@@ -272,17 +272,7 @@ def logout(request: Request, csrf_token: str = Form(...)):
 
 def dashboard_context(request, user, results=None, query=''):
     subjects, chapters, stats = db.dashboard_data(user['id'])
-    # Dashboard planner preview uses the same persistent records as the full planner.
-    planner_tasks = db.list_study_plan_tasks(user['id'], 250)
-    planner_programs = db.list_study_plan_programs(user['id'])
-    planner_tasks = sorted(planner_tasks, key=lambda t: (t.get('due_date'), t.get('completed', False), t.get('id', 0)))
-    pending_planner_tasks = [t for t in planner_tasks if not t.get('completed')]
-    dashboard_planner_tasks = (pending_planner_tasks[:6] + [t for t in planner_tasks if t.get('completed')][:2])
-    dashboard_planner_tasks = sorted(dashboard_planner_tasks, key=lambda t: (t.get('due_date'), t.get('completed', False)))
-    return {'subjects':subjects,'chapters':chapters,'stats':stats,'results':results,'query':query,
-            'planner_tasks':planner_tasks,'dashboard_planner_tasks':dashboard_planner_tasks,
-            'planner_programs':planner_programs,'planner_pending_count':len(pending_planner_tasks),
-            'planner_completed_count':sum(1 for t in planner_tasks if t.get('completed'))}
+    return {'subjects':subjects,'chapters':chapters,'stats':stats,'results':results,'query':query}
 
 @app.get('/', response_class=HTMLResponse)
 def home(request: Request):
@@ -610,12 +600,18 @@ def study_planner_page(request: Request, status: str = '', program_id: str = '',
     program_pending=sum(1 for task in program_tasks if not task['completed'])
     program_progress=round(100*program_completed/len(program_tasks)) if program_tasks else 0
     planned_minutes=sum(int(task['duration_minutes'] or 0) for task in program_tasks)
+    active_timer=db.get_active_study_session(user['id'])
+    timer_totals=db.study_time_totals(user['id'])
+    recent_study_sessions=db.list_study_sessions(user['id'],10)
+    planner_preferences=db.get_planner_preferences(user['id'])
     return render(request, 'planner.html', {'subjects':subjects,'chapters':chapters,'tasks':tasks,
         'program_tasks':program_tasks,'programs':programs,'selected_program':selected_program,
         'selected_program_id':selected_program_id,'program_chapters':program_chapters,
         'candidates':candidates,'pending_count':pending,'completed_count':completed,'status':status,
         'program_completed':program_completed,'program_pending':program_pending,'program_progress':program_progress,
-        'planned_minutes':planned_minutes,'today':datetime.now().date().isoformat()})
+        'planned_minutes':planned_minutes,'today':datetime.now().date().isoformat(),
+        'active_timer':active_timer,'timer_totals':timer_totals,'recent_study_sessions':recent_study_sessions,
+        'planner_preferences':planner_preferences})
 
 @app.post('/planner/program')
 def save_study_program(request: Request, title: str = Form('My study plan'), program_id: str = Form(''),
@@ -633,6 +629,7 @@ def save_study_program(request: Request, title: str = Form('My study plan'), pro
     pid=int(program_id) if program_id.isdigit() else None
     saved,created=db.save_custom_study_program(user['id'],pid,title,start,days,int(hours_per_day*60),selections)
     if not saved: return RedirectResponse('/planner?status=plan_too_short',303)
+    db.schedule_study_plan_times(user['id'],saved)
     return RedirectResponse(f'/planner?program_id={saved}&status=program_saved_{created}',303)
 
 @app.post('/planner/tasks')
@@ -675,41 +672,83 @@ def generate_study_plan(request: Request, days: int = Form(7), daily_minutes: in
         if task_id: created+=1
     return RedirectResponse(f'/planner?status=plan_created_{created}',303)
 
+@app.post('/planner/timer/start')
+def planner_timer_start(request: Request, csrf_token: str = Form(...), task_id: str = Form(''), subject_id: str = Form(''), chapter_id: str = Form(''), title: str = Form('Study session'), planned_minutes: int = Form(25), program_id: str = Form('')):
+    user=require_user(request); require_csrf(request,csrf_token)
+    tid=int(task_id) if task_id.isdigit() else None
+    sid=int(subject_id) if subject_id.isdigit() else None
+    cid=int(chapter_id) if chapter_id.isdigit() else None
+    if tid is not None:
+        with db.connect() as conn:
+            task=conn.execute("SELECT id,subject_id,chapter_id,title,duration_minutes FROM study_plan_tasks WHERE id=%s AND user_id=%s",(tid,user['id'])).fetchone()
+        if not task: return RedirectResponse('/planner?status=invalid_task',303)
+        sid=task['subject_id']; cid=task['chapter_id']; title=task['title']; planned_minutes=task['duration_minutes']
+    if sid is None: return RedirectResponse('/planner?status=choose_subject_for_timer',303)
+    session_id,result=db.start_study_session(user['id'],sid,cid,title,planned_minutes,tid)
+    if result=='active_exists': return RedirectResponse('/planner?status=timer_already_active',303)
+    if not session_id: return RedirectResponse('/planner?status=timer_start_failed',303)
+    return RedirectResponse(f'/planner?program_id={program_id}&status=timer_started',303) if program_id.isdigit() else RedirectResponse('/planner?status=timer_started',303)
+
+@app.post('/planner/timer/{session_id}/pause')
+def planner_timer_pause(request: Request, session_id: int, csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token); db.pause_study_session(user['id'],session_id)
+    return RedirectResponse('/planner?status=timer_paused',303)
+
+@app.post('/planner/timer/{session_id}/resume')
+def planner_timer_resume(request: Request, session_id: int, csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token); db.resume_study_session(user['id'],session_id)
+    return RedirectResponse('/planner?status=timer_resumed',303)
+
+@app.post('/planner/timer/{session_id}/finish')
+def planner_timer_finish(request: Request, session_id: int, csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token); result=db.finish_study_session(user['id'],session_id)
+    return RedirectResponse('/planner?status=timer_saved' if result else '/planner?status=no_active_timer',303)
+
+@app.post('/planner/preferences')
+def planner_save_preferences(request: Request, daily_target_minutes: int = Form(180), preferred_session_minutes: int = Form(50), break_minutes: int = Form(10), break_enabled: str = Form(''), availability_start: str = Form(''), availability_end: str = Form(''), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    start=datetime.strptime(availability_start.strip(),'%H:%M').time() if availability_start.strip() else None
+    end=datetime.strptime(availability_end.strip(),'%H:%M').time() if availability_end.strip() else None
+    if (start and not end) or (end and not start): return RedirectResponse('/planner?status=availability_pair_required',303)
+    db.save_planner_preferences(user['id'],daily_target_minutes,preferred_session_minutes,break_minutes,break_enabled=='on',start,end)
+    db.schedule_study_plan_times(user['id'])
+    return RedirectResponse('/planner?status=preferences_saved',303)
+
 @app.post('/planner/tasks/{task_id}/edit')
 def edit_planner_task(request: Request, task_id: int, title: str = Form(...), duration_minutes: int = Form(25),
-    task_type: str = Form('revise'), csrf_token: str = Form(...), program_id: str = Form(''), return_to: str = Form('')):
+    task_type: str = Form('revise'), csrf_token: str = Form(...), program_id: str = Form('')):
     user=require_user(request); require_csrf(request,csrf_token)
     clean_title=title.strip()
     if not clean_title or len(clean_title)>160:
-        return RedirectResponse('/?planner_status=invalid_title' if return_to == '/' else (f'/planner?program_id={program_id}&status=invalid_title' if program_id.isdigit() else '/planner?status=invalid_title'),303)
+        return RedirectResponse(f'/planner?program_id={program_id}&status=invalid_title' if program_id.isdigit() else '/planner?status=invalid_title',303)
     db.update_study_plan_task(user['id'],task_id,clean_title,duration_minutes,task_type)
-    return RedirectResponse('/?planner_status=task_updated' if return_to == '/' else (f'/planner?program_id={program_id}&status=task_updated' if program_id.isdigit() else '/planner?status=task_updated'),303)
+    return RedirectResponse(f'/planner?program_id={program_id}&status=task_updated' if program_id.isdigit() else '/planner?status=task_updated',303)
 
 @app.post('/planner/tasks/{task_id}/complete')
-def complete_planner_task(request: Request, task_id: int, csrf_token: str = Form(...), program_id: str = Form(''), return_to: str = Form('')):
+def complete_planner_task(request: Request, task_id: int, csrf_token: str = Form(...), program_id: str = Form('')):
     user=require_user(request); require_csrf(request,csrf_token)
     db.set_study_plan_task_completed(user['id'],task_id,True)
-    return RedirectResponse('/?planner_status=task_completed' if return_to == '/' else (f'/planner?program_id={program_id}&status=task_completed' if program_id.isdigit() else '/planner?status=task_completed'),303)
+    return RedirectResponse(f'/planner?program_id={program_id}&status=task_completed' if program_id.isdigit() else '/planner?status=task_completed',303)
 
 @app.post('/planner/tasks/{task_id}/reopen')
-def reopen_planner_task(request: Request, task_id: int, csrf_token: str = Form(...), program_id: str = Form(''), return_to: str = Form('')):
+def reopen_planner_task(request: Request, task_id: int, csrf_token: str = Form(...), program_id: str = Form('')):
     user=require_user(request); require_csrf(request,csrf_token)
     db.set_study_plan_task_completed(user['id'],task_id,False)
-    return RedirectResponse('/?planner_status=task_reopened' if return_to == '/' else (f'/planner?program_id={program_id}&status=task_reopened' if program_id.isdigit() else '/planner?status=task_reopened'),303)
+    return RedirectResponse(f'/planner?program_id={program_id}&status=task_reopened' if program_id.isdigit() else '/planner?status=task_reopened',303)
 
 @app.post('/planner/tasks/{task_id}/reschedule')
-def reschedule_planner_task(request: Request, task_id: int, due_date: str = Form(...), csrf_token: str = Form(...), program_id: str = Form(''), return_to: str = Form('')):
+def reschedule_planner_task(request: Request, task_id: int, due_date: str = Form(...), csrf_token: str = Form(...), program_id: str = Form('')):
     user=require_user(request); require_csrf(request,csrf_token)
     try: due=datetime.strptime(due_date,'%Y-%m-%d').date()
     except ValueError: return RedirectResponse('/planner?status=invalid_date',303)
     db.reschedule_study_plan_task(user['id'],task_id,due)
-    return RedirectResponse('/?planner_status=task_rescheduled' if return_to == '/' else (f'/planner?program_id={program_id}&status=task_rescheduled' if program_id.isdigit() else '/planner?status=task_rescheduled'),303)
+    return RedirectResponse(f'/planner?program_id={program_id}&status=task_rescheduled' if program_id.isdigit() else '/planner?status=task_rescheduled',303)
 
 @app.post('/planner/tasks/{task_id}/delete')
-def delete_planner_task(request: Request, task_id: int, csrf_token: str = Form(...), program_id: str = Form(''), return_to: str = Form('')):
+def delete_planner_task(request: Request, task_id: int, csrf_token: str = Form(...), program_id: str = Form('')):
     user=require_user(request); require_csrf(request,csrf_token)
     db.delete_study_plan_task(user['id'],task_id)
-    return RedirectResponse('/?planner_status=task_deleted' if return_to == '/' else (f'/planner?program_id={program_id}&status=task_deleted' if program_id.isdigit() else '/planner?status=task_deleted'),303)
+    return RedirectResponse(f'/planner?program_id={program_id}&status=task_deleted' if program_id.isdigit() else '/planner?status=task_deleted',303)
 
 @app.get('/analytics', response_class=HTMLResponse)
 def analytics_page(request: Request):

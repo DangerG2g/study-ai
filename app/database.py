@@ -1,6 +1,6 @@
 import os
 from contextlib import contextmanager
-from datetime import timedelta
+from datetime import timedelta, datetime
 from pathlib import Path
 
 import psycopg
@@ -157,7 +157,35 @@ CREATE TABLE IF NOT EXISTS study_plan_program_chapters (
 );
 ALTER TABLE study_plan_tasks ADD COLUMN IF NOT EXISTS program_id BIGINT REFERENCES study_plan_programs(id) ON DELETE SET NULL;
 ALTER TABLE study_plan_tasks ADD COLUMN IF NOT EXISTS schedule_day INTEGER NULL;
+ALTER TABLE study_plan_tasks ADD COLUMN IF NOT EXISTS scheduled_time TIME NULL;
 CREATE INDEX IF NOT EXISTS idx_study_plan_tasks_program ON study_plan_tasks(program_id, schedule_day, completed);
+CREATE TABLE IF NOT EXISTS study_sessions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    task_id BIGINT NULL REFERENCES study_plan_tasks(id) ON DELETE SET NULL,
+    subject_id BIGINT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    chapter_id BIGINT NULL REFERENCES chapters(id) ON DELETE SET NULL,
+    title TEXT NOT NULL DEFAULT 'Study session',
+    planned_minutes INTEGER NOT NULL DEFAULT 25,
+    elapsed_seconds INTEGER NOT NULL DEFAULT 0,
+    status VARCHAR(16) NOT NULL DEFAULT 'running',
+    running_since TIMESTAMPTZ NULL,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at TIMESTAMPTZ NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_user_started ON study_sessions(user_id, started_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_study_timer_per_user ON study_sessions(user_id) WHERE status IN ('running','paused');
+CREATE TABLE IF NOT EXISTS study_planner_preferences (
+    user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    daily_target_minutes INTEGER NOT NULL DEFAULT 180,
+    preferred_session_minutes INTEGER NOT NULL DEFAULT 50,
+    break_minutes INTEGER NOT NULL DEFAULT 10,
+    break_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    availability_start TIME NULL,
+    availability_end TIME NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS file_type VARCHAR(10) NOT NULL DEFAULT 'pdf';
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS preview_data BYTEA NULL;
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS preview_page_count INTEGER NOT NULL DEFAULT 0;
@@ -815,3 +843,106 @@ def list_program_chapters(user_id, program_id):
             FROM study_plan_program_chapters pc JOIN subjects s ON s.id=pc.subject_id
             JOIN chapters c ON c.id=pc.chapter_id WHERE pc.user_id=%s AND pc.program_id=%s ORDER BY pc.added_at,pc.id""",
             (user_id,program_id)).fetchall()
+
+
+# ---------- Shared study timer and study-session history ----------
+def get_active_study_session(user_id):
+    with connect() as conn:
+        return conn.execute("""SELECT ss.*,s.name AS subject_name,c.name AS chapter_name
+            FROM study_sessions ss JOIN subjects s ON s.id=ss.subject_id
+            LEFT JOIN chapters c ON c.id=ss.chapter_id
+            WHERE ss.user_id=%s AND ss.status IN ('running','paused') ORDER BY ss.id DESC LIMIT 1""",(user_id,)).fetchone()
+
+def start_study_session(user_id, subject_id, chapter_id=None, title='Study session', planned_minutes=25, task_id=None):
+    with connect() as conn:
+        active=conn.execute("SELECT id FROM study_sessions WHERE user_id=%s AND status IN ('running','paused') LIMIT 1",(user_id,)).fetchone()
+        if active: return None, 'active_exists'
+        subject=conn.execute("SELECT id FROM subjects WHERE id=%s AND user_id=%s",(subject_id,user_id)).fetchone()
+        if not subject: return None, 'invalid_subject'
+        if chapter_id is not None:
+            chapter=conn.execute("SELECT id FROM chapters WHERE id=%s AND subject_id=%s AND user_id=%s",(chapter_id,subject_id,user_id)).fetchone()
+            if not chapter: chapter_id=None
+        if task_id is not None:
+            task=conn.execute("SELECT id,subject_id,chapter_id,title,duration_minutes FROM study_plan_tasks WHERE id=%s AND user_id=%s",(task_id,user_id)).fetchone()
+            if not task: return None, 'invalid_task'
+            subject_id=task['subject_id']; chapter_id=task['chapter_id']; title=task['title']; planned_minutes=task['duration_minutes']
+        row=conn.execute("""INSERT INTO study_sessions(user_id,task_id,subject_id,chapter_id,title,planned_minutes,status,running_since)
+            VALUES(%s,%s,%s,%s,%s,%s,'running',CURRENT_TIMESTAMP) RETURNING id""",
+            (user_id,task_id,subject_id,chapter_id,(title or 'Study session')[:160],max(1,min(int(planned_minutes),720)))).fetchone()
+        return row['id'], 'started'
+
+def pause_study_session(user_id, session_id):
+    with connect() as conn:
+        row=conn.execute("SELECT id,elapsed_seconds,running_since,status FROM study_sessions WHERE id=%s AND user_id=%s AND status='running'",(session_id,user_id)).fetchone()
+        if not row: return False
+        conn.execute("UPDATE study_sessions SET elapsed_seconds=elapsed_seconds+GREATEST(0,FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP-running_since)))::int),running_since=NULL,status='paused' WHERE id=%s AND user_id=%s",(session_id,user_id))
+        return True
+
+def resume_study_session(user_id, session_id):
+    with connect() as conn:
+        cur=conn.execute("UPDATE study_sessions SET running_since=CURRENT_TIMESTAMP,status='running' WHERE id=%s AND user_id=%s AND status='paused' RETURNING id",(session_id,user_id)).fetchone()
+        return bool(cur)
+
+def finish_study_session(user_id, session_id):
+    with connect() as conn:
+        row=conn.execute("SELECT id,task_id,elapsed_seconds,running_since,status FROM study_sessions WHERE id=%s AND user_id=%s AND status IN ('running','paused') FOR UPDATE",(session_id,user_id)).fetchone()
+        if not row: return None
+        extra="GREATEST(0,FLOOR(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP-running_since)))::int)" if row['status']=='running' else '0'
+        done=conn.execute(f"UPDATE study_sessions SET elapsed_seconds=elapsed_seconds+{extra},running_since=NULL,status='completed',ended_at=CURRENT_TIMESTAMP WHERE id=%s AND user_id=%s RETURNING id,task_id,elapsed_seconds,subject_id,chapter_id,title,planned_minutes,started_at,ended_at",(session_id,user_id)).fetchone()
+        # Completing the timer records time only; task completion remains an explicit user action.
+        return done
+
+def list_study_sessions(user_id, limit=20):
+    with connect() as conn:
+        return conn.execute("""SELECT ss.*,s.name AS subject_name,c.name AS chapter_name
+            FROM study_sessions ss JOIN subjects s ON s.id=ss.subject_id LEFT JOIN chapters c ON c.id=ss.chapter_id
+            WHERE ss.user_id=%s AND ss.status='completed' ORDER BY ss.ended_at DESC NULLS LAST,ss.id DESC LIMIT %s""",(user_id,max(1,min(int(limit),100)))).fetchall()
+
+def study_time_totals(user_id):
+    with connect() as conn:
+        return conn.execute("""SELECT COALESCE(SUM(elapsed_seconds),0)::bigint AS total_seconds,
+            COUNT(*)::int AS completed_sessions,COALESCE(SUM(elapsed_seconds) FILTER (WHERE ended_at::date=CURRENT_DATE),0)::bigint AS today_seconds
+            FROM study_sessions WHERE user_id=%s AND status='completed'""",(user_id,)).fetchone()
+
+def get_planner_preferences(user_id):
+    with connect() as conn:
+        row=conn.execute("SELECT * FROM study_planner_preferences WHERE user_id=%s",(user_id,)).fetchone()
+        if row: return row
+        return {'user_id':user_id,'daily_target_minutes':180,'preferred_session_minutes':50,'break_minutes':10,'break_enabled':True,'availability_start':None,'availability_end':None}
+
+def save_planner_preferences(user_id, daily_target_minutes, preferred_session_minutes, break_minutes, break_enabled, availability_start=None, availability_end=None):
+    daily_target_minutes=max(15,min(int(daily_target_minutes),720)); preferred_session_minutes=max(10,min(int(preferred_session_minutes),180)); break_minutes=max(0,min(int(break_minutes),30))
+    with connect() as conn:
+        return conn.execute("""INSERT INTO study_planner_preferences(user_id,daily_target_minutes,preferred_session_minutes,break_minutes,break_enabled,availability_start,availability_end,updated_at)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET
+            daily_target_minutes=EXCLUDED.daily_target_minutes,preferred_session_minutes=EXCLUDED.preferred_session_minutes,break_minutes=EXCLUDED.break_minutes,
+            break_enabled=EXCLUDED.break_enabled,availability_start=EXCLUDED.availability_start,availability_end=EXCLUDED.availability_end,updated_at=CURRENT_TIMESTAMP RETURNING *""",
+            (user_id,daily_target_minutes,preferred_session_minutes,break_minutes,bool(break_enabled),availability_start or None,availability_end or None)).fetchone()
+
+
+def schedule_study_plan_times(user_id, program_id=None):
+    """Assign clock times to pending tasks when the user has configured an availability window.
+    Tasks that do not fit are left unscheduled rather than silently overbooking the day.
+    """
+    prefs=get_planner_preferences(user_id)
+    start=prefs.get('availability_start'); end=prefs.get('availability_end')
+    if not start or not end: return 0
+    start_minutes=start.hour*60+start.minute; end_minutes=end.hour*60+end.minute
+    if end_minutes <= start_minutes: return 0
+    break_len=int(prefs.get('break_minutes') or 0) if prefs.get('break_enabled') else 0
+    with connect() as conn:
+        if program_id:
+            rows=conn.execute("SELECT id,due_date,duration_minutes FROM study_plan_tasks WHERE user_id=%s AND program_id=%s AND completed=FALSE ORDER BY due_date,id",(user_id,program_id)).fetchall()
+        else:
+            rows=conn.execute("SELECT id,due_date,duration_minutes FROM study_plan_tasks WHERE user_id=%s AND completed=FALSE ORDER BY due_date,id",(user_id,)).fetchall()
+        per_day={}; updated=0
+        for row in rows:
+            minute=per_day.get(row['due_date'],start_minutes)
+            duration=max(1,int(row['duration_minutes'] or 25))
+            if minute+duration <= end_minutes:
+                clock=datetime.strptime(f"{minute//60:02d}:{minute%60:02d}","%H:%M").time()
+                conn.execute("UPDATE study_plan_tasks SET scheduled_time=%s WHERE id=%s AND user_id=%s",(clock,row['id'],user_id))
+                per_day[row['due_date']]=minute+duration+break_len; updated+=1
+            else:
+                conn.execute("UPDATE study_plan_tasks SET scheduled_time=NULL WHERE id=%s AND user_id=%s",(row['id'],user_id))
+        return updated
