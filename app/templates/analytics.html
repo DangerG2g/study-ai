@@ -1,8 +1,34 @@
 {% extends 'base.html' %}
-{% block title %}Achievements · Knowly{% endblock %}
+{% block title %}Achievements & Analytics · Knowly{% endblock %}
 {% block crumb %}Learning Studio / Achievements{% endblock %}
 {% block content %}
-<div class="cosmic-page achievement-page"><section class="cosmic-page-hero achievement-hero"><div><span class="cosmic-kicker">YOUR LEARNING JOURNEY</span><h1>Progress that <span>counts.</span></h1><p>Achievements are based on saved study sessions and learning progress. Use the separate Study Timer to record focused work.</p><div class="cosmic-hero-actions"><a href="/timer" class="cosmic-button">Open Study Timer ↗</a><a href="/quiz-revision" class="cosmic-button ghost-cosmic">Practise revision</a></div></div><div class="achievement-orb"><div class="achievement-orb-inner"><span>✦</span><b>{{ (timer_totals.total_seconds // 3600) }}h {{ ((timer_totals.total_seconds % 3600) // 60) }}m</b><small>RECORDED STUDY</small></div></div></section>
-<section class="cosmic-stat-row"><div class="cosmic-stat"><span>◷</span><small>TOTAL STUDY TIME</small><strong>{{ timer_totals.total_seconds // 3600 }}h {{ (timer_totals.total_seconds % 3600) // 60 }}m</strong><em>Saved timer sessions only</em></div><div class="cosmic-stat"><span>✦</span><small>SESSIONS COMPLETED</small><strong>{{ timer_totals.completed_sessions }}</strong><em>Recorded in your account</em></div><div class="cosmic-stat"><span>▦</span><small>CHAPTERS AVAILABLE</small><strong>{{ chapters|length }}</strong><em>Keep learning and revising</em></div></section>
-<section class="cosmic-panel"><div class="cosmic-section-head"><div><span class="cosmic-kicker">RECENT ACTIVITY</span><h2>Your study history</h2><p>Review the subjects and chapters you've spent time on.</p></div></div><div class="planner-table-wrap"><table class="planner-table"><thead><tr><th>Subject</th><th>Chapter</th><th>Session</th><th>Actual time</th><th>Finished</th></tr></thead><tbody>{% for session in recent_study_sessions %}<tr><td>{{ session.subject_name }}</td><td>{{ session.chapter_name or 'General study' }}</td><td>{{ session.title }}</td><td>{{ session.elapsed_seconds // 60 }} min</td><td>{{ session.ended_at.strftime('%d %b %Y') if session.ended_at else '—' }}</td></tr>{% else %}<tr><td colspan="5" class="planner-empty-cell">No recorded study sessions yet. Start a session from Study Timer to begin building your history.</td></tr>{% endfor %}</tbody></table></div></section></div>
+<div class="l9-page">
+  <section class="l9-hero">
+    <div class="l9-hero-copy"><span class="l9-eyebrow">LEVEL 9 · YOUR LEARNING JOURNEY</span><h1>Progress you can <span>see.</span></h1><p>Your study timer records actual focused time. Knowly turns saved sessions and quiz activity into useful insights and milestones.</p><div class="l9-actions"><a class="l9-button primary" href="/timer">◷ Open Study Timer</a><a class="l9-button secondary" href="/planner">▦ View Study Plan</a></div></div>
+    <div class="l9-ring"><div><strong>{{ timer_totals.total_seconds // 3600 }}h {{ (timer_totals.total_seconds % 3600) // 60 }}m</strong><span>FOCUSED TIME</span></div></div>
+  </section>
+  <section class="l9-metrics">
+    <article class="l9-metric"><span class="l9-metric-icon">◷</span><small>TOTAL FOCUSED TIME</small><strong>{{ timer_totals.total_seconds // 3600 }}h {{ (timer_totals.total_seconds % 3600) // 60 }}m</strong><p>Saved completed sessions</p></article>
+    <article class="l9-metric"><span class="l9-metric-icon">✓</span><small>SESSIONS COMPLETED</small><strong>{{ timer_totals.completed_sessions }}</strong><p>One record per finished timer</p></article>
+    <article class="l9-metric"><span class="l9-metric-icon">◎</span><small>QUIZ ATTEMPTS</small><strong>{{ analytics.quiz.attempts }}</strong><p>Average score {{ '%.0f'|format(analytics.quiz.average_score or 0) }}%</p></article>
+    <article class="l9-metric"><span class="l9-metric-icon">⌁</span><small>TIME TODAY</small><strong>{{ timer_totals.today_seconds // 3600 }}h {{ (timer_totals.today_seconds % 3600) // 60 }}m</strong><p>Based on saved sessions</p></article>
+  </section>
+  <section class="l9-panel">
+    <div class="l9-heading"><div><span class="l9-eyebrow">MILESTONES</span><h2>Achievements</h2><p>Earn these through real, saved activity. No manual claiming needed.</p></div><span class="l9-chip">{{ milestones|selectattr('unlocked')|list|length }} / {{ milestones|length }} unlocked</span></div>
+    <div class="l9-achievements">
+    {% for item in milestones %}<article class="l9-achievement {% if item.unlocked %}unlocked{% endif %}"><div class="l9-achievement-icon">{{ item.icon }}</div><div class="l9-achievement-body"><div class="l9-achievement-title"><h3>{{ item.title }}</h3><span>{% if item.unlocked %}UNLOCKED{% else %}IN PROGRESS{% endif %}</span></div><p>{{ item.description }}</p><div class="l9-progress-track"><i style="width:{{ item.progress }}%"></i></div></div></article>{% endfor %}
+    </div>
+  </section>
+  <section class="l9-two-col">
+    <div class="l9-panel"><div class="l9-heading"><div><span class="l9-eyebrow">WHERE TIME GOES</span><h2>By subject</h2></div></div>
+      {% for item in analytics.by_subject %}<div class="l9-subject-row"><div class="l9-subject-top"><strong>{{ item.subject_name }}</strong><span>{{ item.total_seconds // 3600 }}h {{ (item.total_seconds % 3600) // 60 }}m</span></div><div class="l9-progress-track"><i style="width:{{ (100 * item.total_seconds / timer_totals.total_seconds)|round|int if timer_totals.total_seconds else 0 }}%"></i></div><small>{{ item.sessions }} completed session{{ '' if item.sessions == 1 else 's' }}</small></div>{% else %}<p class="l9-empty">Complete a timer session to see your subject breakdown.</p>{% endfor %}
+    </div>
+    <div class="l9-panel"><div class="l9-heading"><div><span class="l9-eyebrow">CHAPTER FOCUS</span><h2>Most studied chapters</h2></div></div>
+      {% for item in analytics.by_chapter %}<div class="l9-chapter-row"><div><strong>{{ item.chapter_name }}</strong><small>{{ item.subject_name }}</small></div><span>{{ item.total_seconds // 3600 }}h {{ (item.total_seconds % 3600) // 60 }}m</span></div>{% else %}<p class="l9-empty">Chapter focus appears here after you save study sessions linked to chapters.</p>{% endfor %}
+    </div>
+  </section>
+  <section class="l9-panel"><div class="l9-heading"><div><span class="l9-eyebrow">RECENT ACTIVITY</span><h2>Study session history</h2><p>Actual elapsed time from your saved timer sessions.</p></div><a class="l9-text-link" href="/timer">View timer ↗</a></div>
+    <div class="l9-table-wrap"><table class="l9-table"><thead><tr><th>Subject / Chapter</th><th>Session</th><th>Actual time</th><th>Finished</th></tr></thead><tbody>{% for session in recent_study_sessions %}<tr><td><strong>{{ session.subject_name }}</strong><small>{{ session.chapter_name or 'General study' }}</small></td><td>{{ session.title }}</td><td><strong>{{ session.elapsed_seconds // 60 }} min</strong></td><td>{{ session.ended_at.strftime('%d %b %Y · %H:%M') if session.ended_at else '—' }}</td></tr>{% else %}<tr><td colspan="4" class="l9-empty">No saved sessions yet. Open Study Timer and start your first focused session.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</div>
 {% endblock %}
