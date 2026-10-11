@@ -333,7 +333,7 @@ def remove_chapter(request: Request, chapter_id: int, csrf_token: str = Form(...
 def chapter(request: Request, chapter_id: int):
     user=require_user(request); c=db.get_chapter(user['id'],chapter_id)
     if not c: raise HTTPException(404)
-    return render(request,'chapter.html',{'chapter':c,'notes':db.list_notes(user['id'],chapter_id),'pdfs':db.list_pdfs(user['id'],chapter_id)})
+    return render(request,'chapter.html',{'chapter':c,'notes':db.list_notes(user['id'],chapter_id),'pdfs':db.list_pdfs(user['id'],chapter_id),'saved_quizzes':db.list_chapter_saved_quizzes(user['id'],chapter_id,10),'chapter_attempts':db.list_chapter_quiz_attempts(user['id'],chapter_id,10),'saved_decks':db.list_flashcard_decks(user['id'],chapter_id,10)})
 
 @app.post('/chapters/{chapter_id}/notes')
 def create_note(request: Request, chapter_id: int, title: str = Form(...), body: str = Form(...), csrf_token: str = Form(...)):
@@ -586,11 +586,30 @@ def analytics_page(request: Request):
 
 
 @app.get('/quiz-revision', response_class=HTMLResponse)
-def quiz_revision_page(request: Request):
+def quiz_revision_page(request: Request, deck_id: int | None = None, subject_id: str = '', chapter_id: str = ''):
     user = require_user(request)
     subjects, chapters, stats = db.dashboard_data(user['id'])
-    attempts=db.list_quiz_attempts(user['id'],10); progress,by_subject=db.quiz_progress(user['id']); deck=db.latest_flashcard_deck(user['id'])
-    return render(request, 'quiz_revision.html', {'subjects': subjects, 'chapters': chapters, 'stats': stats, 'quiz_items': [], 'quiz_id': None, 'quiz_error': None, 'selected_subject': '', 'selected_chapter': '', 'question_count': 5, 'difficulty':'medium', 'attempts':attempts, 'progress':progress, 'by_subject':by_subject, 'flashcard_deck':deck, 'flashcard_error':None, 'attempt_saved':False, 'submitted_answers':[]})
+    attempts=db.list_quiz_attempts(user['id'],10); progress,by_subject=db.quiz_progress(user['id']); deck=db.get_flashcard_deck(user['id'],deck_id) if deck_id else db.latest_flashcard_deck(user['id']); flashcard_decks=db.list_flashcard_decks(user['id'],None,10)
+    return render(request, 'quiz_revision.html', {'subjects': subjects, 'chapters': chapters, 'stats': stats, 'quiz_items': [], 'quiz_id': None, 'quiz_error': None, 'selected_subject': subject_id, 'selected_chapter': chapter_id, 'flash_subject': subject_id, 'flash_chapter': chapter_id, 'question_count': 5, 'difficulty':'medium', 'attempts':attempts, 'progress':progress, 'by_subject':by_subject, 'flashcard_deck':deck, 'flashcard_decks':flashcard_decks, 'flashcard_error':None, 'attempt_saved':False, 'submitted_answers':[]})
+
+
+@app.get('/quiz-revision/saved/{quiz_id}', response_class=HTMLResponse)
+def reopen_saved_quiz(request: Request, quiz_id: int):
+    user = require_user(request)
+    quiz = db.get_study_quiz(user['id'], quiz_id)
+    if not quiz:
+        raise HTTPException(404, 'Saved quiz not found.')
+    subjects, chapters, stats = db.dashboard_data(user['id'])
+    attempts = db.list_quiz_attempts(user['id'], 10)
+    progress, by_subject = db.quiz_progress(user['id'])
+    deck = db.latest_flashcard_deck(user['id'])
+    flashcard_decks = db.list_flashcard_decks(user['id'], None, 10)
+    return render(request, 'quiz_revision.html', {'subjects': subjects, 'chapters': chapters, 'stats': stats,
+        'quiz_items': quiz['questions'], 'quiz_id': quiz['id'], 'quiz_error': None,
+        'selected_subject': str(quiz['subject_id']), 'selected_chapter': str(quiz['chapter_id'] or ''),
+        'question_count': len(quiz['questions']), 'difficulty': quiz['difficulty'], 'attempts': attempts,
+        'progress': progress, 'by_subject': by_subject, 'flashcard_deck': deck, 'flashcard_decks': flashcard_decks,
+        'flashcard_error': None, 'attempt_saved': False, 'submitted_answers': [], 'reopened_saved_quiz': True})
 
 
 @app.post('/quiz-revision/generate', response_class=HTMLResponse)
@@ -659,7 +678,8 @@ def generate_revision_quiz(request: Request, subject_id: int = Form(...), chapte
     attempts = db.list_quiz_attempts(user['id'], 10)
     progress, by_subject = db.quiz_progress(user['id'])
     deck = db.latest_flashcard_deck(user['id'])
-    return render(request, 'quiz_revision.html', {'subjects': subjects, 'chapters': chapters, 'stats': stats, 'quiz_items': quiz_items, 'quiz_id': quiz_id, 'quiz_error': quiz_error, 'selected_subject': str(subject_id), 'selected_chapter': chapter_id, 'question_count': question_count, 'difficulty': difficulty, 'attempts': attempts, 'progress': progress, 'by_subject': by_subject, 'flashcard_deck': deck, 'flashcard_error': None, 'attempt_saved': False})
+    flashcard_decks = db.list_flashcard_decks(user['id'], None, 10)
+    return render(request, 'quiz_revision.html', {'subjects': subjects, 'chapters': chapters, 'stats': stats, 'quiz_items': quiz_items, 'quiz_id': quiz_id, 'quiz_error': quiz_error, 'selected_subject': str(subject_id), 'selected_chapter': chapter_id, 'flash_subject': str(subject_id), 'flash_chapter': chapter_id, 'question_count': question_count, 'difficulty': difficulty, 'attempts': attempts, 'progress': progress, 'by_subject': by_subject, 'flashcard_deck': deck, 'flashcard_decks': flashcard_decks, 'flashcard_error': None, 'attempt_saved': False})
 
 @app.post('/quiz-revision/submit', response_class=HTMLResponse)
 def submit_revision_quiz(request: Request, quiz_id: int = Form(...), answers: str = Form('[]'), csrf_token: str = Form(...)):
@@ -677,8 +697,9 @@ def submit_revision_quiz(request: Request, quiz_id: int = Form(...), answers: st
     correct = sum(1 for i,q in enumerate(questions) if i < len(selected) and isinstance(selected[i], int) and selected[i] == q.get('answer_index'))
     attempt_id, total, percentage = db.save_quiz_attempt(user['id'], quiz, correct)
     subjects, chapters, stats = db.dashboard_data(user['id'])
-    attempts = db.list_quiz_attempts(user['id'], 10); progress, by_subject = db.quiz_progress(user['id']); deck = db.latest_flashcard_deck(user['id'])
-    return render(request, 'quiz_revision.html', {'subjects':subjects,'chapters':chapters,'stats':stats,'quiz_items':questions,'quiz_id':quiz_id,'quiz_error':None,'selected_subject':str(quiz['subject_id']),'selected_chapter':str(quiz['chapter_id'] or ''),'question_count':total,'difficulty':quiz['difficulty'],'attempts':attempts,'progress':progress,'by_subject':by_subject,'flashcard_deck':deck,'flashcard_error':None,'attempt_saved':True,'submitted_score':correct,'submitted_total':total,'submitted_percentage':percentage,'submitted_answers':selected})
+    attempts = db.list_quiz_attempts(user['id'], 10); progress, by_subject = db.quiz_progress(user['id']); deck = db.latest_flashcard_deck(user['id']); flashcard_decks = db.list_flashcard_decks(user['id'], None, 10)
+    flashcard_decks = db.list_flashcard_decks(user['id'], None, 10)
+    return render(request, 'quiz_revision.html', {'subjects':subjects,'chapters':chapters,'stats':stats,'quiz_items':questions,'quiz_id':quiz_id,'quiz_error':None,'selected_subject':str(quiz['subject_id']),'selected_chapter':str(quiz['chapter_id'] or ''),'flash_subject':str(quiz['subject_id']),'flash_chapter':str(quiz['chapter_id'] or ''),'question_count':total,'difficulty':quiz['difficulty'],'attempts':attempts,'progress':progress,'by_subject':by_subject,'flashcard_deck':deck,'flashcard_decks':flashcard_decks,'flashcard_error':None,'attempt_saved':True,'submitted_score':correct,'submitted_total':total,'submitted_percentage':percentage,'submitted_answers':selected})
 
 @app.post('/quiz-revision/flashcards', response_class=HTMLResponse)
 def generate_revision_flashcards(request: Request, subject_id: int = Form(...), chapter_id: str = Form(''), card_count: int = Form(10), csrf_token: str = Form(...)):
@@ -712,8 +733,8 @@ def generate_revision_flashcards(request: Request, subject_id: int = Form(...), 
             else: db.save_flashcard_deck(user['id'],subject_id,chapter['id'] if chapter else None,cards)
         except Exception as exc:
             print(f'Groq flashcard generation failed: {type(exc).__name__}: {str(exc)[:300]}'); error='Flashcard generation failed. Check Render logs for the Groq error.'
-    attempts=db.list_quiz_attempts(user['id'],10); progress,by_subject=db.quiz_progress(user['id']); deck=db.latest_flashcard_deck(user['id'])
-    return render(request,'quiz_revision.html',{'subjects':subjects,'chapters':chapters,'stats':stats,'quiz_items':[],'quiz_id':None,'quiz_error':None,'selected_subject':str(subject_id),'selected_chapter':chapter_id,'question_count':5,'difficulty':'medium','attempts':attempts,'progress':progress,'by_subject':by_subject,'flashcard_deck':deck,'flashcard_error':error,'attempt_saved':False})
+    attempts=db.list_quiz_attempts(user['id'],10); progress,by_subject=db.quiz_progress(user['id']); deck=db.latest_flashcard_deck(user['id']); flashcard_decks=db.list_flashcard_decks(user['id'],None,10)
+    return render(request,'quiz_revision.html',{'subjects':subjects,'chapters':chapters,'stats':stats,'quiz_items':[],'quiz_id':None,'quiz_error':None,'selected_subject':str(subject_id),'selected_chapter':chapter_id,'flash_subject':str(subject_id),'flash_chapter':chapter_id,'question_count':5,'difficulty':'medium','attempts':attempts,'progress':progress,'by_subject':by_subject,'flashcard_deck':deck,'flashcard_decks':flashcard_decks,'flashcard_error':error,'attempt_saved':False})
 
 @app.post('/audio-notes')
 async def save_audio_note(request: Request, subject_id: int = Form(...), chapter_id: str = Form(''), title: str = Form(...), transcript: str = Form(...), audio: UploadFile = File(...), csrf_token: str = Form(...)):

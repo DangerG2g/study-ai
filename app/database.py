@@ -521,6 +521,48 @@ def save_flashcard_deck(user_id, subject_id, chapter_id, cards):
             VALUES (%s,%s,%s,%s::jsonb) RETURNING id""",(user_id,subject_id,chapter_id,json.dumps(cards))).fetchone()
         return row['id']
 
+
+def list_chapter_saved_quizzes(user_id, chapter_id, limit=10):
+    """Saved generated quizzes for one chapter, newest first."""
+    with connect() as conn:
+        return conn.execute("""SELECT q.id,q.difficulty,q.created_at,
+            jsonb_array_length(q.questions)::int AS question_count,
+            COUNT(a.id)::int AS attempts,COALESCE(MAX(a.percentage),0)::float AS best_score
+            FROM study_quizzes q LEFT JOIN quiz_attempts a ON a.quiz_id=q.id AND a.user_id=q.user_id
+            WHERE q.user_id=%s AND q.chapter_id=%s
+            GROUP BY q.id ORDER BY q.created_at DESC LIMIT %s""", (user_id, chapter_id, limit)).fetchall()
+
+
+def list_chapter_quiz_attempts(user_id, chapter_id, limit=10):
+    with connect() as conn:
+        return conn.execute("""SELECT a.id,a.quiz_id,a.total_questions,a.correct_answers,a.percentage,a.created_at,
+            q.difficulty,s.name AS subject_name,c.name AS chapter_name
+            FROM quiz_attempts a JOIN study_quizzes q ON q.id=a.quiz_id
+            JOIN subjects s ON s.id=a.subject_id LEFT JOIN chapters c ON c.id=a.chapter_id
+            WHERE a.user_id=%s AND a.chapter_id=%s ORDER BY a.created_at DESC LIMIT %s""",
+            (user_id, chapter_id, limit)).fetchall()
+
+
+def list_flashcard_decks(user_id, chapter_id=None, limit=10):
+    with connect() as conn:
+        if chapter_id is None:
+            return conn.execute("""SELECT f.id,f.cards,f.created_at,s.name AS subject_name,c.name AS chapter_name,
+                jsonb_array_length(f.cards)::int AS card_count
+                FROM revision_flashcards f JOIN subjects s ON s.id=f.subject_id LEFT JOIN chapters c ON c.id=f.chapter_id
+                WHERE f.user_id=%s ORDER BY f.created_at DESC LIMIT %s""", (user_id, limit)).fetchall()
+        return conn.execute("""SELECT f.id,f.cards,f.created_at,s.name AS subject_name,c.name AS chapter_name,
+            jsonb_array_length(f.cards)::int AS card_count
+            FROM revision_flashcards f JOIN subjects s ON s.id=f.subject_id LEFT JOIN chapters c ON c.id=f.chapter_id
+            WHERE f.user_id=%s AND f.chapter_id=%s ORDER BY f.created_at DESC LIMIT %s""", (user_id, chapter_id, limit)).fetchall()
+
+
+def get_flashcard_deck(user_id, deck_id):
+    with connect() as conn:
+        return conn.execute("""SELECT f.id,f.cards,f.created_at,s.name AS subject_name,c.name AS chapter_name,
+            jsonb_array_length(f.cards)::int AS card_count
+            FROM revision_flashcards f JOIN subjects s ON s.id=f.subject_id LEFT JOIN chapters c ON c.id=f.chapter_id
+            WHERE f.user_id=%s AND f.id=%s""", (user_id, deck_id)).fetchone()
+
 def latest_flashcard_deck(user_id):
     with connect() as conn:
         return conn.execute("""SELECT f.id,f.cards,f.created_at,s.name AS subject_name,c.name AS chapter_name
