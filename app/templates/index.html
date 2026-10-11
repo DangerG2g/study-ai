@@ -7,26 +7,21 @@
 {% block crumb %}Dashboard{% endblock %}
 {% block content %}
 <div class="knowly-universe-page">
-  <section class="universe-hero cozy-hero">
-    <div class="cozy-hero-copy">
-      <div class="cozy-eyebrow"><span class="cozy-live-dot"></span> YOUR STUDY ROOM</div>
-      <h1>Good evening,<br><span>{{ user.username }}</span></h1>
-      <p>Settle in, take a breath, and make a little progress today.</p>
-      <div class="cozy-hero-actions"><button class="primary" onclick="openModal('subjectModal')">＋ Add a subject</button><a class="cozy-search-link" href="/search">⌕ Search your notes <span>↗</span></a></div>
-      <div class="cozy-quote"><span class="cozy-quote-mark">“</span><span>Small steps, steady focus. You don't have to do everything at once.</span></div>
+  <section class="universe-hero">
+    <div class="universe-copy">
+      <div class="universe-kicker"><span class="pulse-dot"></span> YOUR LEARNING UNIVERSE</div>
+      <h1>Good to see you,<br><span>{{ user.username }}</span><em> ✦</em></h1>
+      <p>Every subject is a world. Every chapter moves you forward.</p>
+      <div class="universe-actions"><button class="primary" onclick="openModal('subjectModal')">＋ Create a subject</button><a class="universe-search-link" href="/search">⌕ Search your knowledge <span>↗</span></a></div>
     </div>
-    <div class="cozy-desk-scene" aria-label="Cozy study desk with a focus timer">
-      <div class="cozy-window"><span></span><span></span><span></span><div class="cozy-rain-lines"></div></div>
-      <div class="cozy-lamp"><i></i><b></b><span></span></div>
-      <div class="cozy-plant"><i></i><i></i><i></i><b></b></div>
-      <div class="cozy-desk">
-        <div class="cozy-book"><i></i><i></i><i></i></div>
-        <div class="cozy-mug"><span></span></div>
-        <div class="cozy-timer-card"><small>FOCUS SESSION</small><strong>25:00</strong><span><i></i> Ready when you are</span></div>
-      </div>
-      <div class="cozy-scene-caption"><span>☾</span> A quieter place to think</div>
+    <div class="universe-scene" aria-label="Illustration of your learning universe">
+      <div class="universe-stars"></div><div class="universe-orbit orbit-a"></div><div class="universe-orbit orbit-b"></div><div class="universe-orbit orbit-c"></div>
+      <div class="planet planet-core"><span>KNOWLY</span><small>YOUR STUDY SPACE</small></div>
+      <div class="planet planet-one"><span>∑</span></div><div class="planet planet-two"><span>λ</span></div><div class="planet planet-three"><span>⌘</span></div>
+      <div class="planet-label label-one">Mathematics <small>Explore concepts</small></div><div class="planet-label label-two">C Programming <small>Build your skills</small></div>
+      <div class="universe-spark spark-one">✦</div><div class="universe-spark spark-two">✧</div><div class="universe-spark spark-three">✦</div>
     </div>
-    <div class="cozy-hero-bottom"><span><i></i> Take it one session at a time</span><span>FOCUS · REST · REPEAT</span></div>
+    <div class="universe-hero-bottom"><span><i></i> Your space is ready to grow</span><span>LEARN · PRACTICE · REVISE</span></div>
   </section>
 
   <section class="universe-metrics">
