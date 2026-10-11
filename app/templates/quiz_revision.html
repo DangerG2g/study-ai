@@ -3,14 +3,88 @@
 {% block crumb %}Learning Studio / Quiz & Revision{% endblock %}
 {% block content %}
 <div class="cosmic-page">
-  <section class="cosmic-page-hero quiz-hero"><div><span class="cosmic-kicker">PRACTICE · RECALL · GROW</span><h1>Quiz & <span>Revision Hub</span></h1><p>Turn what you have studied into something you can remember. Start a quick practice round or make a revision session.</p><div class="cosmic-hero-actions"><a class="cosmic-button" href="#quick-quiz">Start quick quiz ↗</a><a class="cosmic-button ghost-cosmic" href="/">Back to universe</a></div></div><div class="quiz-orbit-art"><div class="quiz-orbit-ring"></div><div class="quiz-core">?</div><i>✦</i><b>RECALL</b><small>is a superpower</small></div></section>
-  <section class="cosmic-stat-row"><div class="cosmic-stat"><span>▣</span><small>SUBJECTS TO PRACTISE</small><strong>{{ subjects|length }}</strong><em>Your learning worlds</em></div><div class="cosmic-stat"><span>◇</span><small>CHAPTERS AVAILABLE</small><strong>{{ stats.chapters }}</strong><em>Choose a topic</em></div><div class="cosmic-stat"><span>✧</span><small>REVISION MODE</small><strong>Ready</strong><em>Build consistency</em></div></section>
-  <section class="cosmic-panel" id="quick-quiz"><div class="cosmic-section-head"><div><span class="cosmic-kicker">QUICK PRACTICE</span><h2>Warm up your brain</h2><p>A short sample quiz to demonstrate the quiz interaction. Your answers stay in this session.</p></div><span class="cosmic-chip">3 questions · instant feedback</span></div>
-    <div id="quizApp" class="quiz-card"><div class="quiz-progress"><span id="quizStep">QUESTION 1 OF 3</span><div><i id="quizProgressBar"></i></div></div><h3 id="quizQuestion">Which action is most useful for active revision?</h3><div id="quizOptions" class="quiz-options"><button data-correct="false">Read the same page repeatedly without checking recall</button><button data-correct="true">Try to answer questions without looking at the notes</button><button data-correct="false">Keep the material open and skip practice</button><button data-correct="false">Highlight everything without reviewing it</button></div><p id="quizFeedback" class="quiz-feedback" aria-live="polite">Choose an answer to continue.</p><div class="quiz-bottom"><span id="quizScore">Score: 0</span><button id="quizNext" class="cosmic-button" disabled>Next question →</button></div></div>
+  <section class="cosmic-page-hero quiz-hero">
+    <div>
+      <span class="cosmic-kicker">YOUR MATERIAL · YOUR PRACTICE</span>
+      <h1>AI Quiz <span>& Revision</span></h1>
+      <p>Generate a real quiz from the notes and extracted text saved in your Knowly library. Choose a subject, optionally narrow it to a chapter, and practise with explanations.</p>
+      <div class="cosmic-hero-actions"><a class="cosmic-button" href="#quiz-builder">Build a quiz ↗</a><a class="cosmic-button ghost-cosmic" href="/assistant">Ask Knowly</a></div>
+    </div>
+    <div class="quiz-orbit-art" aria-hidden="true"><div class="quiz-orbit-ring"></div><div class="quiz-core">?</div><i>✦</i><b>RECALL</b><small>from your materials</small></div>
   </section>
-  <section class="cosmic-panel"><div class="cosmic-section-head"><div><span class="cosmic-kicker">YOUR MATERIALS</span><h2>Pick a world to revise</h2><p>Open a subject or chapter and use your saved notes and materials for revision.</p></div></div><div class="cosmic-subject-list">{% for subject in subjects %}<a class="cosmic-subject-row" href="/subjects/{{ subject.id }}"><span class="cosmic-mini-planet">{{ ['∑','λ','⌘','◉','✳'][loop.index0 % 5] }}</span><span><b>{{ subject.name }}</b><small>{{ subject.chapter_count }} chapters</small></span><span class="cosmic-row-arrow">↗</span></a>{% else %}<div class="cosmic-empty-state">Create a subject first, then add notes or materials to revise here. <a href="/">Create a subject →</a></div>{% endfor %}</div></section>
+
+  <section class="cosmic-stat-row">
+    <div class="cosmic-stat"><span>▣</span><small>YOUR SUBJECTS</small><strong>{{ subjects|length }}</strong><em>Select a subject below</em></div>
+    <div class="cosmic-stat"><span>◇</span><small>CHAPTERS AVAILABLE</small><strong>{{ stats.chapters }}</strong><em>Focus your practice</em></div>
+    <div class="cosmic-stat"><span>✧</span><small>QUIZ GENERATION</small><strong>Groq AI</strong><em>Grounded in retrieved material</em></div>
+  </section>
+
+  <section class="cosmic-panel" id="quiz-builder">
+    <div class="cosmic-section-head"><div><span class="cosmic-kicker">AI QUIZ BUILDER</span><h2>What are you studying?</h2><p>This creates questions from matching saved notes and indexed document text. It will not substitute generic questions if source material is missing.</p></div></div>
+    <form class="ai-quiz-form" method="post" action="/quiz-revision/generate">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Subject
+        <select name="subject_id" id="quizSubject" required>
+          <option value="">Choose a subject</option>
+          {% for subject in subjects %}
+          <option value="{{ subject.id }}" {% if selected_subject|string == subject.id|string %}selected{% endif %}>{{ subject.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Chapter (optional)
+        <select name="chapter_id" id="quizChapter">
+          <option value="">All chapters in this subject</option>
+          {% for chapter in chapters %}
+          <option value="{{ chapter.id }}" data-subject="{{ chapter.subject_id }}" {% if selected_chapter|string == chapter.id|string %}selected{% endif %}>{{ chapter.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Number of questions
+        <select name="question_count">
+          {% for n in [3,5,7,10] %}<option value="{{ n }}" {% if question_count|int == n %}selected{% endif %}>{{ n }} questions</option>{% endfor %}
+        </select>
+      </label>
+      <label>Difficulty
+        <select name="difficulty">
+          <option value="easy" {% if difficulty == 'easy' %}selected{% endif %}>Easy</option>
+          <option value="medium" {% if difficulty == 'medium' or not difficulty %}selected{% endif %}>Medium</option>
+          <option value="hard" {% if difficulty == 'hard' %}selected{% endif %}>Hard</option>
+        </select>
+      </label>
+      <button class="cosmic-button" type="submit">Generate from my materials ↗</button>
+    </form>
+    {% if quiz_error %}<div class="quiz-generation-error" role="alert"><strong>Quiz not generated</strong><p>{{ quiz_error }}</p></div>{% endif %}
+    {% if quiz_items %}
+    <div class="generated-quiz" id="generatedQuiz">
+      <div class="generated-quiz-head"><div><span class="cosmic-kicker">GENERATED FROM YOUR LIBRARY</span><h3>Your practice round</h3><p>Choose one answer for each question. Explanations appear after you answer.</p></div><span class="cosmic-chip">{{ quiz_items|length }} questions</span></div>
+      <div class="quiz-progress"><span id="generatedQuizProgress">0 / {{ quiz_items|length }} answered</span><div><i id="generatedQuizBar" style="width:0%"></i></div></div>
+      {% for item in quiz_items %}
+      <article class="generated-question" data-answer="{{ item.answer_index }}" data-explanation="{{ item.explanation|e }}" data-source="{{ item.source|e }}">
+        <h4>{{ loop.index }}. {{ item.question }}</h4>
+        <div class="generated-options">
+          {% for option in item.options %}<button type="button" class="generated-option" data-option="{{ loop.index0 }}">{{ ['A','B','C','D'][loop.index0] }}. {{ option }}</button>{% endfor %}
+        </div>
+        <p class="generated-feedback" aria-live="polite"></p>
+        <details><summary>View source and explanation</summary><p class="generated-explanation"></p><small class="generated-source">Source: {{ item.source }}</small></details>
+      </article>
+      {% endfor %}
+      <div class="quiz-bottom"><strong id="generatedQuizScore">Score: 0 / {{ quiz_items|length }}</strong><button type="button" class="cosmic-button" id="quizFinish">Finish and review score</button></div>
+      <p id="generatedQuizSummary" class="quiz-feedback" aria-live="polite"></p>
+    </div>
+    {% endif %}
+  </section>
+  <section class="cosmic-panel"><div class="cosmic-section-head"><div><span class="cosmic-kicker">NEED MORE MATERIAL?</span><h2>Make your library searchable</h2><p>AI quizzes need relevant extracted text or saved notes. If a chapter has no matching material, add notes or upload a readable document first.</p></div></div><div class="cosmic-hero-actions"><a class="cosmic-button" href="/add-material">＋ Add material</a><a class="cosmic-button ghost-cosmic" href="/search">Search knowledge</a></div></section>
 </div>
 {% endblock %}
-{% block scripts %}<script>
-(()=>{const qs=[{q:'Which action is most useful for active revision?',a:['Read the same page repeatedly without checking recall','Try to answer questions without looking at the notes','Keep the material open and skip practice','Highlight everything without reviewing it'],c:1,why:'Correct. Retrieval practice means trying to recall information before checking your notes.'},{q:'When you get a practice question wrong, what is a good next step?',a:['Ignore it and move on forever','Memorise only the option letter','Review the explanation and try a similar question later','Stop revising the topic'],c:2,why:'Correct. Understanding the mistake and revisiting it helps you strengthen recall.'},{q:'What makes a revision schedule useful?',a:['It never changes even if your workload changes','It includes spaced review and can be adjusted as you progress','It only lists the chapters you already know','It avoids practice questions'],c:1,why:'Correct. A useful schedule includes repeated review and adapts to your progress.'}];let i=0,score=0,answered=false;const q=document.getElementById('quizQuestion'),opts=document.getElementById('quizOptions'),feedback=document.getElementById('quizFeedback'),next=document.getElementById('quizNext'),step=document.getElementById('quizStep'),bar=document.getElementById('quizProgressBar'),sc=document.getElementById('quizScore');function render(){answered=false;let x=qs[i];step.textContent=`QUESTION ${i+1} OF ${qs.length}`;bar.style.width=((i)/qs.length*100)+'%';q.textContent=x.q;opts.innerHTML='';x.a.forEach((t,j)=>{let b=document.createElement('button');b.textContent=t;b.addEventListener('click',()=>answer(j,b));opts.appendChild(b)});feedback.textContent='Choose an answer to continue.';feedback.className='quiz-feedback';next.disabled=true;next.textContent=i===qs.length-1?'See results →':'Next question →';}function answer(j,b){if(answered)return;answered=true;let x=qs[i];[...opts.children].forEach((el,k)=>{el.disabled=true;if(k===x.c)el.classList.add('correct');if(k===j&&j!==x.c)el.classList.add('incorrect')});if(j===x.c)score++;feedback.textContent=(j===x.c?'✓ ':'↻ ')+x.why;feedback.classList.add(j===x.c?'good':'try-again');sc.textContent='Score: '+score;next.disabled=false;bar.style.width=((i+1)/qs.length*100)+'%';}next.addEventListener('click',()=>{if(!answered)return;if(i<qs.length-1){i++;render()}else{q.textContent=`You scored ${score} out of ${qs.length}`;opts.innerHTML='';feedback.textContent=score===qs.length?'Excellent recall. Keep the momentum going!':'Good practice. Review the explanations and try again.';next.textContent='Try again ↻';next.disabled=false;next.onclick=()=>{i=0;score=0;sc.textContent='Score: 0';next.onclick=null;render()};bar.style.width='100%';}});render()})();
-</script>{% endblock %}
+{% block scripts %}
+<script>
+(()=>{
+ const subject=document.getElementById('quizSubject'),chapter=document.getElementById('quizChapter');
+ if(subject&&chapter){const update=()=>{const sid=subject.value;for(const opt of chapter.options){if(!opt.value){opt.hidden=false;continue;}opt.hidden=!!sid&&opt.dataset.subject!==sid;if(opt.hidden&&opt.selected)chapter.value='';}};subject.addEventListener('change',update);update();}
+ const cards=[...document.querySelectorAll('.generated-question')];if(!cards.length)return;
+ let score=0,answered=0;const progress=document.getElementById('generatedQuizProgress'),bar=document.getElementById('generatedQuizBar'),scoreNode=document.getElementById('generatedQuizScore');
+ cards.forEach(card=>{const correct=Number(card.dataset.answer);card.querySelectorAll('[data-option]').forEach(btn=>btn.addEventListener('click',()=>{if(card.dataset.answered)return;card.dataset.answered='1';answered++;const selected=Number(btn.dataset.option);card.querySelectorAll('[data-option]').forEach(opt=>{opt.disabled=true;if(Number(opt.dataset.option)===correct)opt.classList.add('correct');if(Number(opt.dataset.option)===selected&&selected!==correct)opt.classList.add('incorrect');});const right=selected===correct;if(right)score++;const feedback=card.querySelector('.generated-feedback');feedback.textContent=right?'Correct — well done.':'Not quite. Review the explanation below.';feedback.classList.add(right?'good':'try-again');card.querySelector('.generated-explanation').textContent=card.dataset.explanation||'No explanation was provided.';progress.textContent=`${answered} / ${cards.length} answered`;bar.style.width=(answered/cards.length*100)+'%';scoreNode.textContent=`Score: ${score} / ${answered} answered`; }));});
+ document.getElementById('quizFinish')?.addEventListener('click',()=>{const unanswered=cards.length-answered;document.getElementById('generatedQuizSummary').textContent=`Final score: ${score} / ${cards.length}. ${unanswered?unanswered+' question(s) not answered.':'All questions answered.'}`;cards.forEach(c=>{if(!c.dataset.answered)c.querySelector('details').open=true;});});
+})();
+</script>
+{% endblock %}
