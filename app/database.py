@@ -89,6 +89,36 @@ CREATE TABLE IF NOT EXISTS sticky_notes (
 );
 CREATE INDEX IF NOT EXISTS idx_sticky_notes_user ON sticky_notes(user_id);
 CREATE INDEX IF NOT EXISTS idx_sticky_notes_pdf ON sticky_notes(pdf_id);
+CREATE TABLE IF NOT EXISTS study_quizzes (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject_id BIGINT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    chapter_id BIGINT REFERENCES chapters(id) ON DELETE CASCADE,
+    questions JSONB NOT NULL,
+    difficulty VARCHAR(12) NOT NULL DEFAULT 'medium',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+    id BIGSERIAL PRIMARY KEY,
+    quiz_id BIGINT NOT NULL REFERENCES study_quizzes(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject_id BIGINT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    chapter_id BIGINT REFERENCES chapters(id) ON DELETE SET NULL,
+    total_questions INTEGER NOT NULL,
+    correct_answers INTEGER NOT NULL,
+    percentage NUMERIC(5,2) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user_date ON quiz_attempts(user_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS revision_flashcards (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject_id BIGINT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    chapter_id BIGINT REFERENCES chapters(id) ON DELETE CASCADE,
+    cards JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_revision_flashcards_user ON revision_flashcards(user_id, created_at DESC);
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS file_type VARCHAR(10) NOT NULL DEFAULT 'pdf';
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS preview_data BYTEA NULL;
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS preview_page_count INTEGER NOT NULL DEFAULT 0;
@@ -443,3 +473,56 @@ def update_sticky_note(user_id, sticky_id, title, body, color):
 def delete_sticky_note(user_id, sticky_id):
     with connect() as conn:
         return conn.execute("DELETE FROM sticky_notes WHERE id=%s AND user_id=%s RETURNING id", (sticky_id,user_id)).fetchone()
+
+
+# ---------- Quiz, progress and revision flashcards (additive tables) ----------
+def save_study_quiz(user_id, subject_id, chapter_id, questions, difficulty):
+    import json
+    with connect() as conn:
+        row = conn.execute("""INSERT INTO study_quizzes(user_id,subject_id,chapter_id,questions,difficulty)
+            VALUES (%s,%s,%s,%s::jsonb,%s) RETURNING id""",
+            (user_id, subject_id, chapter_id, json.dumps(questions), difficulty)).fetchone()
+        return row['id']
+
+def get_study_quiz(user_id, quiz_id):
+    with connect() as conn:
+        return conn.execute('SELECT * FROM study_quizzes WHERE id=%s AND user_id=%s', (quiz_id,user_id)).fetchone()
+
+def save_quiz_attempt(user_id, quiz, correct_answers):
+    total = len(quiz['questions'])
+    percentage = round((correct_answers / total) * 100, 2) if total else 0
+    with connect() as conn:
+        row = conn.execute("""INSERT INTO quiz_attempts(quiz_id,user_id,subject_id,chapter_id,total_questions,correct_answers,percentage)
+            VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (quiz['id'],user_id,quiz['subject_id'],quiz['chapter_id'],total,correct_answers,percentage)).fetchone()
+        return row['id'], total, percentage
+
+def list_quiz_attempts(user_id, limit=10):
+    with connect() as conn:
+        return conn.execute("""SELECT a.id,a.total_questions,a.correct_answers,a.percentage,a.created_at,
+            s.name AS subject_name,c.name AS chapter_name
+            FROM quiz_attempts a JOIN subjects s ON s.id=a.subject_id LEFT JOIN chapters c ON c.id=a.chapter_id
+            WHERE a.user_id=%s ORDER BY a.created_at DESC LIMIT %s""", (user_id,limit)).fetchall()
+
+def quiz_progress(user_id):
+    with connect() as conn:
+        summary=conn.execute("""SELECT COUNT(*)::int AS attempts,COALESCE(AVG(percentage),0)::float AS average,
+            COALESCE(MAX(percentage),0)::float AS best FROM quiz_attempts WHERE user_id=%s""",(user_id,)).fetchone()
+        by_subject=conn.execute("""SELECT s.name AS subject_name,COUNT(a.id)::int AS attempts,
+            COALESCE(AVG(a.percentage),0)::float AS average
+            FROM quiz_attempts a JOIN subjects s ON s.id=a.subject_id WHERE a.user_id=%s
+            GROUP BY s.id,s.name ORDER BY s.name COLLATE "C""",(user_id,)).fetchall()
+    return summary,by_subject
+
+def save_flashcard_deck(user_id, subject_id, chapter_id, cards):
+    import json
+    with connect() as conn:
+        row=conn.execute("""INSERT INTO revision_flashcards(user_id,subject_id,chapter_id,cards)
+            VALUES (%s,%s,%s,%s::jsonb) RETURNING id""",(user_id,subject_id,chapter_id,json.dumps(cards))).fetchone()
+        return row['id']
+
+def latest_flashcard_deck(user_id):
+    with connect() as conn:
+        return conn.execute("""SELECT f.id,f.cards,f.created_at,s.name AS subject_name,c.name AS chapter_name
+            FROM revision_flashcards f JOIN subjects s ON s.id=f.subject_id LEFT JOIN chapters c ON c.id=f.chapter_id
+            WHERE f.user_id=%s ORDER BY f.created_at DESC LIMIT 1""",(user_id,)).fetchone()
