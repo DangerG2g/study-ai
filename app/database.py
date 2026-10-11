@@ -946,3 +946,25 @@ def schedule_study_plan_times(user_id, program_id=None):
             else:
                 conn.execute("UPDATE study_plan_tasks SET scheduled_time=NULL WHERE id=%s AND user_id=%s",(row['id'],user_id))
         return updated
+
+
+def study_analytics(user_id):
+    """Aggregated, completed-session analytics for the current user only."""
+    with connect() as conn:
+        by_subject = conn.execute("""SELECT s.id AS subject_id,s.name AS subject_name,
+            COALESCE(SUM(ss.elapsed_seconds),0)::bigint AS total_seconds,
+            COUNT(ss.id)::int AS sessions,
+            COALESCE(AVG(ss.elapsed_seconds),0)::int AS average_seconds
+            FROM subjects s LEFT JOIN study_sessions ss ON ss.subject_id=s.id AND ss.user_id=%s AND ss.status='completed'
+            WHERE s.user_id=%s GROUP BY s.id,s.name ORDER BY total_seconds DESC,s.name""", (user_id,user_id)).fetchall()
+        by_chapter = conn.execute("""SELECT c.id AS chapter_id,c.name AS chapter_name,s.name AS subject_name,
+            COALESCE(SUM(ss.elapsed_seconds),0)::bigint AS total_seconds,COUNT(ss.id)::int AS sessions
+            FROM chapters c JOIN subjects s ON s.id=c.subject_id
+            LEFT JOIN study_sessions ss ON ss.chapter_id=c.id AND ss.user_id=%s AND ss.status='completed'
+            WHERE c.user_id=%s GROUP BY c.id,c.name,s.name ORDER BY total_seconds DESC,c.name LIMIT 12""", (user_id,user_id)).fetchall()
+        daily = conn.execute("""SELECT ended_at::date AS study_date,COALESCE(SUM(elapsed_seconds),0)::bigint AS total_seconds,
+            COUNT(*)::int AS sessions FROM study_sessions WHERE user_id=%s AND status='completed'
+            AND ended_at >= CURRENT_DATE - INTERVAL '6 days' GROUP BY ended_at::date ORDER BY study_date""", (user_id,)).fetchall()
+        quiz = conn.execute("""SELECT COUNT(*)::int AS attempts,COALESCE(AVG(percentage),0)::float AS average_score
+            FROM quiz_attempts WHERE user_id=%s""", (user_id,)).fetchone()
+        return {'by_subject': by_subject, 'by_chapter': by_chapter, 'daily': daily, 'quiz': quiz}

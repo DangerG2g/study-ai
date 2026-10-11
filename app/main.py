@@ -777,7 +777,22 @@ def delete_planner_task(request: Request, task_id: int, csrf_token: str = Form(.
 def analytics_page(request: Request):
     user = require_user(request)
     subjects, chapters, stats = db.dashboard_data(user['id'])
-    return render(request, 'analytics.html', {'subjects': subjects, 'chapters': chapters, 'stats': stats, 'timer_totals': db.study_time_totals(user['id']), 'recent_study_sessions': db.list_study_sessions(user['id'], 30)})
+    timer_totals = db.study_time_totals(user['id'])
+    analytics = db.study_analytics(user['id'])
+    total_seconds = int(timer_totals['total_seconds'] or 0)
+    milestones = [
+        {'title': 'First Focus', 'description': 'Complete your first saved study session.', 'goal': 1, 'value': int(timer_totals['completed_sessions']), 'icon': '✦'},
+        {'title': 'Five Sessions', 'description': 'Complete five focused study sessions.', 'goal': 5, 'value': int(timer_totals['completed_sessions']), 'icon': '◷'},
+        {'title': 'One Hour Club', 'description': 'Record one hour of focused study.', 'goal': 3600, 'value': total_seconds, 'icon': '⌛'},
+        {'title': 'Five Hour Club', 'description': 'Record five hours of focused study.', 'goal': 18000, 'value': total_seconds, 'icon': '★'},
+        {'title': 'Revision Starter', 'description': 'Attempt your first saved quiz.', 'goal': 1, 'value': int(analytics['quiz']['attempts'] or 0), 'icon': '◎'},
+    ]
+    for item in milestones:
+        item['unlocked'] = item['value'] >= item['goal']
+        item['progress'] = min(100, round(100 * item['value'] / item['goal'])) if item['goal'] else 100
+    return render(request, 'analytics.html', {'subjects': subjects, 'chapters': chapters, 'stats': stats,
+        'timer_totals': timer_totals, 'recent_study_sessions': db.list_study_sessions(user['id'], 30),
+        'analytics': analytics, 'milestones': milestones})
 
 
 @app.get('/quiz-revision', response_class=HTMLResponse)
