@@ -272,7 +272,17 @@ def logout(request: Request, csrf_token: str = Form(...)):
 
 def dashboard_context(request, user, results=None, query=''):
     subjects, chapters, stats = db.dashboard_data(user['id'])
-    return {'subjects':subjects,'chapters':chapters,'stats':stats,'results':results,'query':query}
+    # Dashboard planner preview uses the same persistent records as the full planner.
+    planner_tasks = db.list_study_plan_tasks(user['id'], 250)
+    planner_programs = db.list_study_plan_programs(user['id'])
+    planner_tasks = sorted(planner_tasks, key=lambda t: (t.get('due_date'), t.get('completed', False), t.get('id', 0)))
+    pending_planner_tasks = [t for t in planner_tasks if not t.get('completed')]
+    dashboard_planner_tasks = (pending_planner_tasks[:6] + [t for t in planner_tasks if t.get('completed')][:2])
+    dashboard_planner_tasks = sorted(dashboard_planner_tasks, key=lambda t: (t.get('due_date'), t.get('completed', False)))
+    return {'subjects':subjects,'chapters':chapters,'stats':stats,'results':results,'query':query,
+            'planner_tasks':planner_tasks,'dashboard_planner_tasks':dashboard_planner_tasks,
+            'planner_programs':planner_programs,'planner_pending_count':len(pending_planner_tasks),
+            'planner_completed_count':sum(1 for t in planner_tasks if t.get('completed'))}
 
 @app.get('/', response_class=HTMLResponse)
 def home(request: Request):
