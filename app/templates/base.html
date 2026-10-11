@@ -193,9 +193,13 @@ document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.
     if(!a || e.defaultPrevented || e.button!==0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.target==='_blank' || a.hasAttribute('download'))return;
     const u=new URL(a.href,location.href);
     if(u.origin!==location.origin || u.pathname==='/logout' || a.closest('form'))return;
-    if(a.closest('.workspace-sidebar') || a.classList.contains('brand') || a.closest('.workspace-canvas')){
-      e.preventDefault(); navigate(u.href,true);
-    }
+    /* Route ordinary same-origin page links through the persistent canvas so
+       the audio element in base.html is not destroyed by a full document load. */
+    if (a.hasAttribute('data-no-canvas-nav') || a.closest('[data-no-canvas-nav]')) return;
+    if (u.pathname.startsWith('/static/') || u.pathname.startsWith('/uploads/') || u.pathname.startsWith('/materials/') || u.pathname.startsWith('/pdf/')) return;
+    if (a.href.includes('#') && u.pathname === location.pathname && u.search === location.search) return;
+    e.preventDefault();
+    navigate(u.href,true);
   });
   window.addEventListener('popstate',()=>navigate(location.href,false));
 })();
