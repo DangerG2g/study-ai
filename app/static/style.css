@@ -802,3 +802,36 @@ body{background:var(--theme-page,#f4f6fb)!important;color:var(--theme-text,#2226
 .sidebar-bottom{margin-top:auto!important;padding-bottom:10px!important;}
 @media(max-height:900px) and (min-width:701px){.sidebar{overflow-y:auto!important;}.brand{margin-bottom:20px!important}.sidebar nav{gap:4px!important}.nav-link{padding:9px 11px!important}.side-label{margin-top:16px!important}.mini-note{display:none!important}.sidebar-tools{padding:10px!important}.music-caption{margin:5px 0 7px!important}.theme-select{padding:7px 8px!important}.study-audio-status{font-size:11px!important}}
 @media(max-width:700px){.sidebar{height:auto!important;max-height:none!important}.sidebar-bottom{display:block!important}.sidebar-tools{margin-bottom:12px!important}.content{padding:20px 14px 40px!important}.hero{padding:24px!important}}
+
+
+/* Minimal sidebar spacing fix: keep the existing Knowly design unchanged. */
+.sidebar-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sidebar-tool-heading {
+  margin-top: 4px;
+  margin-bottom: 2px;
+}
+.theme-select-label,
+.music-caption {
+  display: block;
+  margin: 2px 0 4px;
+  line-height: 1.45;
+}
+.music-heading {
+  margin-top: 10px;
+}
+.study-audio-player {
+  margin-top: 2px;
+  padding: 14px;
+  gap: 10px;
+}
+.study-audio-controls {
+  row-gap: 8px;
+}
+.study-audio-status {
+  margin: 8px 0 0;
+  line-height: 1.45;
+}
