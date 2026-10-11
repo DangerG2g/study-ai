@@ -3,11 +3,12 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{% block title %}Knowly{% endblock %}</title>
+  <script>try{document.documentElement.dataset.knowlyTheme=localStorage.getItem("knowlyTheme")||"workspace"}catch(e){document.documentElement.dataset.knowlyTheme="workspace"}</script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div class="app-shell">
-  <aside class="sidebar" aria-label="Main navigation">
+<div class="app-shell workspace-shell">
+  <aside class="sidebar workspace-sidebar" aria-label="Main navigation">
     <a class="brand" href="/"><span class="brand-mark">✦</span><span>Knowly</span></a>
     {% if user %}
     <nav>
@@ -19,18 +20,14 @@
       <a href="/planner" class="nav-link{% if request.url.path.startswith('/planner') %} active{% endif %}">▦ <span>Study Planner</span></a>
       <a href="/timer" class="nav-link{% if request.url.path.startswith('/timer') %} active{% endif %}">◷ <span>Study Timer</span></a>
       <a href="/analytics" class="nav-link{% if request.url.path.startswith('/analytics') %} active{% endif %}">◷ <span>Achievements</span></a>
+      <a href="/appearance" class="nav-link{% if request.url.path.startswith('/appearance') %} active{% endif %}">▧ <span>Appearance</span></a>
     </nav>
     <div class="side-label">YOUR WORKSPACE</div>
     <div class="mini-note">Your subjects, your pace, your progress.</div>
     <div class="sidebar-bottom">
       <div class="profile-mini"><div class="avatar">{{ user.username[0]|upper }}</div><div><b>{{ user.username }}</b><small>Student</small></div></div>
       <a class="profile-link" href="/change-password">⚙ Change password</a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="logout">↪ Log out</button></form>
-      <section class="sidebar-tools" aria-label="Personalize Knowly">
-        <div class="sidebar-tool-heading"><span>APPEARANCE</span><button type="button" id="themeCycleBtn" class="tiny-tool-btn" title="Cycle theme">Change</button></div>
-        <label class="theme-select-label" for="knowlyThemeSelect">Choose your theme</label>
-        <select id="knowlyThemeSelect" class="theme-select">
-          <option value="midnight">Midnight Purple</option><option value="light">Clean Light</option><option value="forest">Forest Green</option><option value="paper">Warm Paper</option><option value="ocean">Ocean Blue</option><option value="mono">Minimal Mono</option>
-        </select>
+      <section class="sidebar-tools" aria-label="Study audio controls">
         <div class="sidebar-tool-heading music-heading"><span>STUDY AUDIO</span><span class="music-live-dot" id="studyAudioDot"></span></div>
         <p class="music-caption">Original ambient loops · stays inside Knowly.</p>
         <div class="study-audio-player" id="studyAudioPlayer">
@@ -55,12 +52,12 @@
     </div>
     {% endif %}
   </aside>
-  <main class="main">
-    <header class="topbar">
+  <main class="main workspace-main">
+    <header class="topbar workspace-topbar">
       <div class="crumb">{% block crumb %}Workspace{% endblock %}</div>
       {% if user %}<form class="top-search" id="globalSearchForm" action="/search" method="get"><button type="submit" class="search-submit" title="Search" aria-label="Search"><span>⌕</span></button><input id="globalSearchInput" name="q" placeholder="Search knowledge" value="{{ query|default('') }}"><button type="button" class="voice-search-btn" id="voiceSearchBtn" title="Search by voice" aria-label="Search by voice"><span>🎙</span><i></i></button></form><div class="voice-search-status" id="voiceSearchStatus" aria-live="polite"></div><div class="top-avatar">{{ user.username[0]|upper }}</div>{% endif %}
     </header>
-    <section class="content">{% block content %}{% endblock %}</section>
+    <section class="content workspace-canvas">{% block content %}{% endblock %}</section>
   </main>
 </div>
 <script>
@@ -146,32 +143,65 @@ document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.
 })();
 </script>
 
+
 <script>
+/* Keep the sidebar audio element alive while switching between Knowly pages. */
 (function(){
- const select=document.getElementById('knowlyThemeSelect');
- const themes=['midnight','light','forest','paper','ocean','mono'];
- const labels={midnight:'Midnight Purple',light:'Clean Light',forest:'Forest Green',paper:'Warm Paper',ocean:'Ocean Blue',mono:'Minimal Mono'};
- function applyTheme(name,save){
-   if(!themes.includes(name)) name='midnight';
-   document.documentElement.setAttribute('data-theme',name);
-   document.documentElement.style.colorScheme=(name==='light'||name==='paper')?'light':'dark';
-   if(select) select.value=name;
-   if(save){try{localStorage.setItem('knowly-theme',name)}catch(e){}}
-   document.dispatchEvent(new CustomEvent('knowly:themechange',{detail:{theme:name,label:labels[name]}}));
- }
- let saved='midnight';
- try{saved=localStorage.getItem('knowly-theme')||'midnight'}catch(e){}
- applyTheme(saved,false);
- if(select){
-   select.addEventListener('input',()=>applyTheme(select.value,true));
-   select.addEventListener('change',()=>applyTheme(select.value,true));
- }
- document.getElementById('themeCycleBtn')?.addEventListener('click',()=>{
-   const current=select?.value||document.documentElement.dataset.theme||'midnight';
-   const i=themes.indexOf(current);applyTheme(themes[(i+1)%themes.length],true);
-   if(select){select.focus();}
- });
+  if (window.__knowlyCanvasRouterInstalled) return;
+  window.__knowlyCanvasRouterInstalled = true;
+  function activateScripts(container){
+    container.querySelectorAll('script').forEach(old=>{
+      const s=document.createElement('script');
+      for(const a of old.attributes) s.setAttribute(a.name,a.value);
+      s.textContent=old.textContent;
+      old.replaceWith(s);
+    });
+  }
+  function markActive(path){
+    document.querySelectorAll('.workspace-sidebar .nav-link').forEach(a=>{
+      const u=new URL(a.href,location.origin).pathname;
+      a.classList.toggle('active',u===path || (u!=='/' && path.startsWith(u)));
+    });
+  }
+  async function navigate(url,push=true){
+    const target=new URL(url,location.href);
+    if(target.origin!==location.origin || target.pathname==='/logout' || target.pathname.startsWith('/static/')){location.href=target.href;return;}
+    const canvas=document.querySelector('.workspace-canvas');
+    if(!canvas){location.href=target.href;return;}
+    canvas.classList.add('canvas-loading');
+    try{
+      const response=await fetch(target.href,{headers:{'X-Requested-With':'KnowlyCanvas'}});
+      if(!response.ok || !response.headers.get('content-type')?.includes('text/html')){location.href=target.href;return;}
+      const html=await response.text();
+      const doc=new DOMParser().parseFromString(html,'text/html');
+      const next=doc.querySelector('.workspace-canvas');
+      if(!next){location.href=target.href;return;}
+      canvas.innerHTML=next.innerHTML;
+      const crumb=document.querySelector('.workspace-topbar .crumb');
+      const nextCrumb=doc.querySelector('.workspace-topbar .crumb');
+      if(crumb&&nextCrumb)crumb.innerHTML=nextCrumb.innerHTML;
+      document.title=doc.title || 'Knowly';
+      if(push) history.pushState({knowlyCanvas:true},'',target.href);
+      markActive(target.pathname);
+      activateScripts(canvas);
+      window.scrollTo({top:0,behavior:'instant'});
+      document.dispatchEvent(new CustomEvent('knowly:pagechange',{detail:{path:target.pathname}}));
+    }catch(err){location.href=target.href;}
+    finally{canvas.classList.remove('canvas-loading');}
+  }
+  document.addEventListener('click',e=>{
+    const a=e.target.closest('a[href]');
+    if(!a || e.defaultPrevented || e.button!==0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.target==='_blank' || a.hasAttribute('download'))return;
+    const u=new URL(a.href,location.href);
+    if(u.origin!==location.origin || u.pathname==='/logout' || a.closest('form'))return;
+    if (u.pathname.startsWith('/static/') || u.pathname.startsWith('/uploads/') || u.pathname.startsWith('/materials/') || u.pathname.startsWith('/pdf/')) return;
+    if (a.href.includes('#') && u.pathname === location.pathname && u.search === location.search) return;
+    /* Keep the persistent sidebar/audio player mounted for ordinary same-origin page navigation. */
+    e.preventDefault(); navigate(u.href,true);
+  });
+  window.addEventListener('popstate',()=>navigate(location.href,false));
 })();
 </script>
+
 {% block scripts %}{% endblock %}
 </body></html>
