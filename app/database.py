@@ -1,5 +1,6 @@
 import os
 from contextlib import contextmanager
+from datetime import timedelta
 from pathlib import Path
 
 import psycopg
@@ -135,6 +136,28 @@ CREATE TABLE IF NOT EXISTS study_plan_tasks (
     completed_at TIMESTAMPTZ NULL
 );
 CREATE INDEX IF NOT EXISTS idx_study_plan_tasks_user_date ON study_plan_tasks(user_id, due_date, completed);
+CREATE TABLE IF NOT EXISTS study_plan_programs (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT 'My study plan',
+    start_date DATE NOT NULL,
+    days INTEGER NOT NULL DEFAULT 3,
+    daily_minutes INTEGER NOT NULL DEFAULT 120,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS study_plan_program_chapters (
+    id BIGSERIAL PRIMARY KEY,
+    program_id BIGINT NOT NULL REFERENCES study_plan_programs(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject_id BIGINT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    chapter_id BIGINT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    added_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(program_id, chapter_id)
+);
+ALTER TABLE study_plan_tasks ADD COLUMN IF NOT EXISTS program_id BIGINT REFERENCES study_plan_programs(id) ON DELETE SET NULL;
+ALTER TABLE study_plan_tasks ADD COLUMN IF NOT EXISTS schedule_day INTEGER NULL;
+CREATE INDEX IF NOT EXISTS idx_study_plan_tasks_program ON study_plan_tasks(program_id, schedule_day, completed);
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS file_type VARCHAR(10) NOT NULL DEFAULT 'pdf';
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS preview_data BYTEA NULL;
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS preview_page_count INTEGER NOT NULL DEFAULT 0;
@@ -639,11 +662,81 @@ def delete_study_plan_task(user_id, task_id):
 
 def planner_chapter_candidates(user_id):
     with connect() as conn:
-        return conn.execute("""SELECT c.id AS chapter_id,c.name AS chapter_name,c.subject_id,s.name AS subject_name,
+        return conn.execute('''SELECT c.id AS chapter_id,c.name AS chapter_name,c.subject_id,s.name AS subject_name,
             COUNT(a.id)::int AS attempts,COALESCE(AVG(a.percentage),0)::float AS average,
             MAX(a.created_at) AS last_attempt
             FROM chapters c JOIN subjects s ON s.id=c.subject_id AND s.user_id=c.user_id
             LEFT JOIN quiz_attempts a ON a.chapter_id=c.id AND a.user_id=c.user_id
             WHERE c.user_id=%s GROUP BY c.id,c.name,c.subject_id,s.name
             ORDER BY CASE WHEN COUNT(a.id)=0 THEN 0 ELSE 1 END,
-            CASE WHEN COUNT(a.id)=0 THEN 0 ELSE AVG(a.percentage) END ASC,c.name""",(user_id,)).fetchall()
+            CASE WHEN COUNT(a.id)=0 THEN 0 ELSE AVG(a.percentage) END ASC,c.name COLLATE "C"''',(user_id,)).fetchall()
+
+# ---------- Custom multi-subject study programs ----------
+def list_study_plan_programs(user_id):
+    with connect() as conn:
+        return conn.execute("""SELECT p.*,COUNT(DISTINCT pc.chapter_id)::int AS chapter_count,
+            COUNT(DISTINCT t.id) FILTER (WHERE t.completed)::int AS completed_sessions,
+            COUNT(DISTINCT t.id)::int AS total_sessions
+            FROM study_plan_programs p
+            LEFT JOIN study_plan_program_chapters pc ON pc.program_id=p.id
+            LEFT JOIN study_plan_tasks t ON t.program_id=p.id AND t.user_id=p.user_id
+            WHERE p.user_id=%s GROUP BY p.id ORDER BY p.updated_at DESC,p.id DESC""",(user_id,)).fetchall()
+
+def save_custom_study_program(user_id, program_id, title, start_date, days, daily_minutes, selections):
+    """Create/update a program, add chapter selections, and rebalance unfinished sessions.
+    Completed sessions are preserved; only pending sessions in this program are rebuilt.
+    selections is a list of (subject_id, chapter_id) pairs.
+    """
+    days=max(1,min(int(days),30)); daily_minutes=max(30,min(int(daily_minutes),720))
+    title=(title or 'My study plan').strip()[:100] or 'My study plan'
+    with connect() as conn:
+        program=conn.execute("SELECT id FROM study_plan_programs WHERE id=%s AND user_id=%s",(program_id,user_id)).fetchone() if program_id else None
+        if program:
+            pid=program['id']
+            conn.execute("""UPDATE study_plan_programs SET title=%s,start_date=%s,days=%s,daily_minutes=%s,updated_at=CURRENT_TIMESTAMP
+                WHERE id=%s AND user_id=%s""",(title,start_date,days,daily_minutes,pid,user_id))
+        else:
+            row=conn.execute("""INSERT INTO study_plan_programs(user_id,title,start_date,days,daily_minutes)
+                VALUES(%s,%s,%s,%s,%s) RETURNING id""",(user_id,title,start_date,days,daily_minutes)).fetchone()
+            pid=row['id']
+        for subject_id,chapter_id in selections:
+            valid=conn.execute("""SELECT s.id AS subject_id,c.id AS chapter_id FROM subjects s
+                JOIN chapters c ON c.subject_id=s.id AND c.user_id=s.user_id
+                WHERE s.id=%s AND s.user_id=%s AND c.id=%s""",(subject_id,user_id,chapter_id)).fetchone()
+            if not valid: continue
+            conn.execute("""INSERT INTO study_plan_program_chapters(program_id,user_id,subject_id,chapter_id)
+                VALUES(%s,%s,%s,%s) ON CONFLICT(program_id,chapter_id) DO NOTHING""",(pid,user_id,subject_id,chapter_id))
+        chapter_rows=conn.execute("""SELECT pc.subject_id,pc.chapter_id,s.name AS subject_name,c.name AS chapter_name
+            FROM study_plan_program_chapters pc JOIN subjects s ON s.id=pc.subject_id
+            JOIN chapters c ON c.id=pc.chapter_id WHERE pc.program_id=%s AND pc.user_id=%s
+            ORDER BY pc.added_at,pc.id""",(pid,user_id)).fetchall()
+        if not chapter_rows: return None,0
+        # Preserve completed work; rebalance only pending sessions.
+        conn.execute("DELETE FROM study_plan_tasks WHERE program_id=%s AND user_id=%s AND completed=FALSE",(pid,user_id))
+        minutes_per_chapter=max(5,daily_minutes//len(chapter_rows))
+        created=0
+        for day_index in range(1,days+1):
+            due_date=start_date+timedelta(days=day_index-1)
+            for chapter in chapter_rows:
+                done=conn.execute("""SELECT 1 FROM study_plan_tasks WHERE program_id=%s AND user_id=%s
+                    AND chapter_id=%s AND schedule_day=%s AND completed=TRUE LIMIT 1""",(pid,user_id,chapter['chapter_id'],day_index)).fetchone()
+                if done: continue
+                task_title=f"{chapter['chapter_name']} · Day {day_index}"
+                conn.execute("""INSERT INTO study_plan_tasks(user_id,subject_id,chapter_id,title,task_type,due_date,duration_minutes,
+                    priority,rationale,program_id,schedule_day)
+                    VALUES(%s,%s,%s,%s,'revise',%s,%s,'normal',%s,%s,%s)""",
+                    (user_id,chapter['subject_id'],chapter['chapter_id'],task_title,due_date,minutes_per_chapter,
+                     f"Custom plan: day {day_index} of {days}; daily budget {daily_minutes} minutes.",pid,day_index))
+                created+=1
+        return pid,created
+
+def get_study_plan_program(user_id, program_id):
+    with connect() as conn:
+        return conn.execute("SELECT * FROM study_plan_programs WHERE id=%s AND user_id=%s",(program_id,user_id)).fetchone()
+
+def list_program_chapters(user_id, program_id):
+    with connect() as conn:
+        return conn.execute("""SELECT pc.subject_id,pc.chapter_id,s.name AS subject_name,c.name AS chapter_name
+            FROM study_plan_program_chapters pc JOIN subjects s ON s.id=pc.subject_id
+            JOIN chapters c ON c.id=pc.chapter_id WHERE pc.user_id=%s AND pc.program_id=%s ORDER BY pc.added_at,pc.id""",
+            (user_id,program_id)).fetchall()

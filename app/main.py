@@ -579,16 +579,41 @@ def assistant_ask(request: Request, question: str = Form(...), csrf_token: str =
 
 
 @app.get('/planner', response_class=HTMLResponse)
-def study_planner_page(request: Request, status: str = ''):
+def study_planner_page(request: Request, status: str = '', program_id: str = ''):
     user = require_user(request)
     subjects, chapters, stats = db.dashboard_data(user['id'])
-    tasks = db.list_study_plan_tasks(user['id'], 100)
+    tasks = db.list_study_plan_tasks(user['id'], 300)
     candidates = db.planner_chapter_candidates(user['id'])
+    programs = db.list_study_plan_programs(user['id'])
+    selected_program_id = int(program_id) if program_id.isdigit() else (programs[0]['id'] if programs else None)
+    selected_program = db.get_study_plan_program(user['id'], selected_program_id) if selected_program_id else None
+    program_chapters = db.list_program_chapters(user['id'], selected_program_id) if selected_program_id else []
+    program_tasks = [t for t in tasks if selected_program_id and t.get('program_id') == selected_program_id]
     pending = sum(1 for task in tasks if not task['completed'])
     completed = sum(1 for task in tasks if task['completed'])
     return render(request, 'planner.html', {'subjects':subjects,'chapters':chapters,'tasks':tasks,
+        'program_tasks':program_tasks,'programs':programs,'selected_program':selected_program,
+        'selected_program_id':selected_program_id,'program_chapters':program_chapters,
         'candidates':candidates,'pending_count':pending,'completed_count':completed,'status':status,
         'today':datetime.now().date().isoformat()})
+
+@app.post('/planner/program')
+def save_study_program(request: Request, title: str = Form('My study plan'), program_id: str = Form(''),
+    start_date: str = Form(...), days: int = Form(3), hours_per_day: float = Form(2),
+    subject_ids: list[str] = Form(default=[]), chapter_ids: list[str] = Form(default=[]), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    try: start=datetime.strptime(start_date,'%Y-%m-%d').date()
+    except ValueError: return RedirectResponse('/planner?status=invalid_date',303)
+    days=max(1,min(int(days),30)); hours_per_day=max(0.5,min(float(hours_per_day),12.0))
+    selections=[]
+    for subject_raw,chapter_raw in zip(subject_ids,chapter_ids):
+        if subject_raw.isdigit() and chapter_raw.isdigit():
+            selections.append((int(subject_raw),int(chapter_raw)))
+    if not selections: return RedirectResponse('/planner?status=no_chapters_selected',303)
+    pid=int(program_id) if program_id.isdigit() else None
+    saved,created=db.save_custom_study_program(user['id'],pid,title,start,days,int(hours_per_day*60),selections)
+    if not saved: return RedirectResponse('/planner?status=no_chapters_selected',303)
+    return RedirectResponse(f'/planner?program_id={saved}&status=program_saved_{created}',303)
 
 @app.post('/planner/tasks')
 def create_planner_task(request: Request, subject_id: int = Form(...), chapter_id: str = Form(''), title: str = Form(...),
