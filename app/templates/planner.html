@@ -2,80 +2,70 @@
 {% block title %}Study Planner · Knowly{% endblock %}
 {% block crumb %}Learning Studio / Study Planner{% endblock %}
 {% block content %}
-<div class="cosmic-page planner-page">
-  <section class="cosmic-page-hero planner-hero">
-    <div><span class="cosmic-kicker">LEVEL 8 · ADAPTIVE STUDY PLANNER</span><h1>A plan that <span>moves with you.</span></h1>
-      <p>Build a realistic routine, prioritize chapters that need practice, and move unfinished work without losing your progress.</p>
-      <div class="cosmic-hero-actions"><a class="cosmic-button" href="#plannerTasks">View my tasks ↓</a><a class="cosmic-button ghost-cosmic" href="/quiz-revision">Practise a quiz ↗</a></div>
-    </div><div class="planner-hero-art"><span>◷</span><b>PLAN</b><i>✦</i><small>LEARN AT YOUR PACE</small></div>
-  </section>
+<div class="planner-modal-backdrop">
+  <section class="planner-modal" role="dialog" aria-modal="true" aria-labelledby="plannerTitle">
+    <header class="planner-modal-head">
+      <div><span class="cosmic-kicker">KNOWLY · CUSTOM STUDY PLANNER</span><h1 id="plannerTitle">Build a schedule that <span>fits your life.</span></h1><p>Choose your days, hours, subjects and chapters. Add chapters later and Knowly will rebalance unfinished sessions while preserving completed work.</p></div>
+      <a class="planner-close" href="/" aria-label="Close planner" title="Back to dashboard">×</a>
+    </header>
 
-  {% if status %}<div class="planner-alert {% if status.startswith('invalid') or status == 'no_chapters' %}warning{% else %}success{% endif %}" role="status">
-    {% if status == 'task_added' %}Study task added.{% elif status == 'task_completed' %}Task marked complete — nice work!{% elif status == 'task_reopened' %}Task moved back to pending.{% elif status == 'task_rescheduled' %}Task rescheduled.{% elif status == 'task_deleted' %}Task removed.{% elif status.startswith('plan_created_') %}Created {{ status.split('_')[-1] }} suggested task(s) based on your chapters and quiz history.{% elif status == 'no_chapters' %}Create a subject and chapter first to generate a plan.{% elif status == 'invalid_title' %}Enter a task title (up to 160 characters).{% elif status == 'invalid_date' %}Choose a valid due date.{% elif status == 'invalid_chapter' %}That chapter doesn't belong to the selected subject. Please select again.{% else %}Your planner has been updated.{% endif %}
-  </div>{% endif %}
+    {% if status %}<div class="planner-alert {% if status.startswith('invalid') or status in ['no_chapters','no_chapters_selected'] %}warning{% else %}success{% endif %}" role="status">
+      {% if status == 'task_added' %}Study task added.{% elif status == 'task_completed' %}Session marked complete — nice work!{% elif status == 'task_reopened' %}Session moved back to pending.{% elif status == 'task_rescheduled' %}Session rescheduled.{% elif status == 'task_deleted' %}Task removed.{% elif status.startswith('program_saved_') %}Your schedule is saved and unfinished sessions have been balanced again.{% elif status == 'no_chapters_selected' %}Select at least one subject and chapter before saving the schedule.{% elif status == 'no_chapters' %}Create a subject and chapter first.{% elif status == 'invalid_date' %}Choose a valid start date.{% elif status == 'invalid_title' %}Enter a valid task title.{% elif status == 'invalid_chapter' %}That chapter doesn't belong to the selected subject.{% else %}Your planner has been updated.{% endif %}
+    </div>{% endif %}
 
-  <section class="cosmic-stat-row planner-stats">
-    <div class="cosmic-stat"><span>◷</span><small>PENDING TASKS</small><strong>{{ pending_count }}</strong><em>Still to do</em></div>
-    <div class="cosmic-stat"><span>✓</span><small>COMPLETED</small><strong>{{ completed_count }}</strong><em>Progress you've made</em></div>
-    <div class="cosmic-stat"><span>✦</span><small>CHAPTERS TO PLAN</small><strong>{{ candidates|length }}</strong><em>Prioritized using quiz history</em></div>
-  </section>
-
-  <section class="cosmic-panel planner-panel">
-    <div class="cosmic-section-head"><div><span class="cosmic-kicker">SMART START</span><h2>Build a suggested plan</h2><p>Knowly prioritizes chapters with no quiz attempts and chapters where quiz scores suggest more practice may help.</p></div><span class="cosmic-chip">PERSONALIZED</span></div>
-    <form method="post" action="/planner/generate" class="planner-generate-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label>Plan length <select name="days"><option value="7">Next 7 days</option><option value="3">Next 3 days</option><option value="14">Next 14 days</option></select></label>
-      <label>Study time per session <select name="daily_minutes"><option value="25">25 minutes</option><option value="45" selected>45 minutes</option><option value="60">60 minutes</option><option value="90">90 minutes</option></select></label>
-      <button class="cosmic-button" type="submit" {% if not candidates %}disabled{% endif %}>✦ Generate my plan</button>
-    </form>
-    <p class="planner-footnote">Generating a plan adds suggested tasks; it does not delete or overwrite your existing tasks. The planner uses your chapter list and saved quiz attempts, not assumptions about your schedule.</p>
-  </section>
-
-  <section class="cosmic-panel planner-panel">
-    <div class="cosmic-section-head"><div><span class="cosmic-kicker">MAKE IT YOURS</span><h2>Add a study task</h2><p>Add a one-off task for reading, quiz practice, flashcards, audio review or general revision.</p></div></div>
-    <form method="post" action="/planner/tasks" class="planner-create-form" id="plannerCreateForm">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label>Subject <select name="subject_id" id="plannerSubject" required><option value="">Choose a subject</option>{% for s in subjects %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></label>
-      <label>Chapter (optional) <select name="chapter_id" id="plannerChapter"><option value="">Subject-level task</option>{% for c in chapters %}<option value="{{ c.id }}" data-subject="{{ c.subject_id }}">{{ c.subject_name }} · {{ c.name }}</option>{% endfor %}</select></label>
-      <label class="planner-wide">Task title <input name="title" maxlength="160" placeholder="e.g. Revise C operators and expressions" required></label>
-      <label>Task type <select name="task_type"><option value="revise">General revision</option><option value="read">Read / understand</option><option value="quiz">Quiz practice</option><option value="flashcards">Flashcards</option><option value="practice">Problem practice</option><option value="audio">Listen to audio notes</option></select></label>
-      <label>Due date <input type="date" name="due_date" value="{{ today }}" required></label>
-      <label>Study time <select name="duration_minutes"><option value="15">15 minutes</option><option value="25" selected>25 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option><option value="90">90 minutes</option><option value="120">2 hours</option></select></label>
-      <div class="planner-wide planner-submit"><button class="cosmic-button" type="submit" {% if not subjects %}disabled{% endif %}>＋ Add task</button></div>
-    </form>
-  </section>
-
-  <section class="cosmic-panel planner-panel" id="plannerTasks">
-    <div class="cosmic-section-head"><div><span class="cosmic-kicker">YOUR STUDY ROUTINE</span><h2>Tasks and upcoming sessions</h2><p>Mark tasks complete, reschedule them, or reopen a completed task if you want another revision session.</p></div><span class="cosmic-chip">{{ tasks|length }} SHOWN</span></div>
-    <div class="planner-task-list">
-      {% for task in tasks %}
-      <article class="planner-task {% if task.completed %}is-complete{% endif %}">
-        <div class="planner-task-icon">{% if task.task_type == 'quiz' %}◎{% elif task.task_type == 'flashcards' %}▤{% elif task.task_type == 'read' %}⌕{% elif task.task_type == 'practice' %}⌘{% elif task.task_type == 'audio' %}♫{% else %}✎{% endif %}</div>
-        <div class="planner-task-main"><div class="planner-task-top"><span class="planner-task-type">{{ task.task_type|replace('_',' ')|upper }}</span><span class="planner-priority priority-{{ task.priority }}">{{ task.priority }} priority</span>{% if task.completed %}<span class="planner-done-label">COMPLETED</span>{% endif %}</div>
-          <h3>{{ task.title }}</h3><p>{{ task.subject_name }}{% if task.chapter_name %} · {{ task.chapter_name }}{% endif %}</p>
-          {% if task.rationale %}<small class="planner-rationale">{{ task.rationale }}</small>{% endif %}
-          <div class="planner-task-meta"><span>◷ {{ task.due_date.strftime('%a, %d %b %Y') }}</span><span>⌛ {{ task.duration_minutes }} min</span></div>
-        </div>
-        <div class="planner-task-actions">
-          {% if not task.completed %}<form method="post" action="/planner/tasks/{{ task.id }}/complete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="planner-action primary-action" type="submit">✓ Done</button></form>
-          <form method="post" action="/planner/tasks/{{ task.id }}/reschedule" class="planner-reschedule"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input aria-label="New due date" type="date" name="due_date" value="{{ task.due_date.isoformat() }}" required><button class="planner-action" type="submit">Reschedule</button></form>
-          {% else %}<form method="post" action="/planner/tasks/{{ task.id }}/reopen"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="planner-action" type="submit">↶ Reopen</button></form>{% endif %}
-          <form method="post" action="/planner/tasks/{{ task.id }}/delete" onsubmit="return confirm('Remove this study task?')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="planner-delete" type="submit">Remove</button></form>
-        </div>
-      </article>
-      {% else %}<div class="cosmic-empty-state"><strong>Your plan starts here.</strong><br>Add a task yourself or generate a suggested plan from your existing chapters.</div>{% endfor %}
+    <div class="planner-modal-stats">
+      <div><small>PENDING</small><strong>{{ pending_count }}</strong></div><div><small>COMPLETED</small><strong>{{ completed_count }}</strong></div><div><small>SUBJECTS AVAILABLE</small><strong>{{ subjects|length }}</strong></div>
     </div>
+
+    <section class="planner-builder">
+      <div class="planner-builder-heading"><div><span class="cosmic-kicker">01 · CUSTOMIZE</span><h2>Schedule settings</h2><p>Set the total duration and daily study budget. Add multiple subject–chapter pairs below.</p></div></div>
+      <form method="post" action="/planner/program" id="customPlannerForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="planner-settings-grid">
+          <label>Plan name<input name="title" maxlength="100" value="{{ selected_program.title if selected_program else 'My study plan' }}" placeholder="e.g. Mid-semester preparation" required></label>
+          <label>Update an existing plan<select name="program_id" id="plannerProgramSelect"><option value="">＋ Create a new plan</option>{% for p in programs %}<option value="{{ p.id }}" {% if selected_program and selected_program.id == p.id %}selected{% endif %}>{{ p.title }} · {{ p.days }} days</option>{% endfor %}</select></label>
+          <label>Start date<input type="date" name="start_date" value="{{ selected_program.start_date.isoformat() if selected_program else today }}" required></label>
+          <label>Number of days<input type="number" name="days" min="1" max="30" value="{{ selected_program.days if selected_program else 3 }}" required></label>
+          <label>Study hours per day<select name="hours_per_day" required>{% for h in [0.5,1,1.5,2,2.5,3,4,5,6,8,10,12] %}<option value="{{ h }}" {% if selected_program and selected_program.daily_minutes == (h*60)|int %}selected{% elif not selected_program and h == 2 %}selected{% endif %}>{{ h }} hour{% if h != 1 %}s{% endif %}</option>{% endfor %}</select></label>
+        </div>
+        <div class="planner-chapter-picker-head"><div><h3>Subjects and chapters</h3><p>Each row is one chapter. Mix chapters from different subjects in the same plan.</p></div><button class="planner-action" type="button" id="addPlannerChapterRow">＋ Add chapter</button></div>
+        <div id="plannerChapterRows" class="planner-chapter-rows">
+          {% if program_chapters %}{% for pc in program_chapters %}
+          <div class="planner-chapter-row"><label>Subject<select name="subject_ids" class="planner-row-subject" required><option value="">Choose subject</option>{% for s in subjects %}<option value="{{ s.id }}" {% if s.id == pc.subject_id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select></label><label>Chapter<select name="chapter_ids" class="planner-row-chapter" required><option value="">Choose chapter</option>{% for c in chapters %}<option value="{{ c.id }}" data-subject="{{ c.subject_id }}" {% if c.id == pc.chapter_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></label><button type="button" class="planner-remove-row" aria-label="Remove chapter row">×</button></div>
+          {% endfor %}{% else %}
+          <div class="planner-chapter-row"><label>Subject<select name="subject_ids" class="planner-row-subject" required><option value="">Choose subject</option>{% for s in subjects %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></label><label>Chapter<select name="chapter_ids" class="planner-row-chapter" required><option value="">Choose chapter</option>{% for c in chapters %}<option value="{{ c.id }}" data-subject="{{ c.subject_id }}">{{ c.subject_name }} · {{ c.name }}</option>{% endfor %}</select></label><button type="button" class="planner-remove-row" aria-label="Remove chapter row">×</button></div>
+          {% endif %}
+        </div>
+        <div class="planner-form-footer"><p>Adding chapters to an existing plan recalculates its pending sessions. Completed sessions stay completed.</p><button class="cosmic-button" type="submit">Save &amp; balance schedule ↗</button></div>
+      </form>
+    </section>
+
+    <section class="planner-schedule-section">
+      <div class="planner-builder-heading"><div><span class="cosmic-kicker">02 · YOUR SCHEDULE</span><h2>{% if selected_program %}{{ selected_program.title }}{% else %}Schedule overview{% endif %}</h2><p>{% if selected_program %}{{ selected_program.days }} days · {{ (selected_program.daily_minutes / 60)|round(1) }} hours per day · {{ program_chapters|length }} chapter(s){% else %}Create a custom plan to see its daily sessions in this table.{% endif %}</p></div><span class="cosmic-chip">{{ program_tasks|length }} SESSIONS</span></div>
+      {% if selected_program %}
+      <div class="planner-table-wrap"><table class="planner-table"><thead><tr><th>Day / Date</th><th>Subject</th><th>Chapter / Session</th><th>Planned time</th><th>Status</th><th>Action</th></tr></thead><tbody>
+        {% for task in program_tasks|sort(attribute='due_date') %}<tr class="{% if task.completed %}planner-table-done{% endif %}"><td><strong>Day {{ task.schedule_day or '—' }}</strong><small>{{ task.due_date.strftime('%a, %d %b') }}</small></td><td>{{ task.subject_name }}</td><td><strong>{{ task.chapter_name or task.title }}</strong><small>{{ task.title }}</small></td><td>{{ (task.duration_minutes / 60)|round(2) }} h</td><td><span class="planner-status-pill {% if task.completed %}done{% else %}pending{% endif %}">{{ 'Completed' if task.completed else 'Pending' }}</span></td><td>{% if not task.completed %}<form method="post" action="/planner/tasks/{{ task.id }}/complete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="planner-table-action" type="submit">✓ Done</button></form>{% else %}<form method="post" action="/planner/tasks/{{ task.id }}/reopen"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="planner-table-action" type="submit">↶ Reopen</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="6" class="planner-empty-cell">No sessions yet. Select chapters and save the plan.</td></tr>{% endfor %}
+      </tbody></table></div>
+      {% else %}<div class="planner-empty-table"><span>▦</span><strong>Your timetable will appear here</strong><p>Choose subjects, chapters, days and daily study hours, then save your first plan.</p></div>{% endif %}
+    </section>
+
+    <details class="planner-extra-tasks"><summary>One-off tasks and older study sessions</summary><div class="planner-table-wrap"><table class="planner-table"><thead><tr><th>Date</th><th>Subject</th><th>Task</th><th>Time</th><th>Status</th><th>Action</th></tr></thead><tbody>
+      {% for task in tasks if not task.program_id %}<tr><td>{{ task.due_date.strftime('%d %b %Y') }}</td><td>{{ task.subject_name }}</td><td>{{ task.title }}</td><td>{{ task.duration_minutes }} min</td><td>{{ 'Completed' if task.completed else 'Pending' }}</td><td>{% if not task.completed %}<form method="post" action="/planner/tasks/{{ task.id }}/complete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="planner-table-action" type="submit">✓ Done</button></form>{% else %}<form method="post" action="/planner/tasks/{{ task.id }}/reopen"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="planner-table-action" type="submit">↶ Reopen</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="6" class="planner-empty-cell">No one-off tasks yet.</td></tr>{% endfor %}
+    </tbody></table></div></details>
   </section>
 </div>
+<template id="plannerChapterRowTemplate"><div class="planner-chapter-row"><label>Subject<select name="subject_ids" class="planner-row-subject" required><option value="">Choose subject</option>{% for s in subjects %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></label><label>Chapter<select name="chapter_ids" class="planner-row-chapter" required><option value="">Choose chapter</option>{% for c in chapters %}<option value="{{ c.id }}" data-subject="{{ c.subject_id }}">{{ c.subject_name }} · {{ c.name }}</option>{% endfor %}</select></label><button type="button" class="planner-remove-row" aria-label="Remove chapter row">×</button></div></template>
 {% endblock %}
 {% block scripts %}
 <script>
 (function(){
- const subject=document.getElementById('plannerSubject'), chapter=document.getElementById('plannerChapter');
- if(!subject||!chapter)return;
- function sync(){const selected=chapter.options[chapter.selectedIndex];if(selected&&selected.dataset.subject&&selected.dataset.subject!==subject.value){subject.value=selected.dataset.subject;}}
- chapter.addEventListener('change',sync);
- subject.addEventListener('change',()=>{const chosen=chapter.options[chapter.selectedIndex];if(chosen&&chosen.dataset.subject&&chosen.dataset.subject!==subject.value)chapter.value='';});
+ const rows=document.getElementById('plannerChapterRows'),tpl=document.getElementById('plannerChapterRowTemplate'),add=document.getElementById('addPlannerChapterRow');
+ if(!rows||!tpl||!add)return;
+ function wire(row){const subject=row.querySelector('.planner-row-subject'),chapter=row.querySelector('.planner-row-chapter'),remove=row.querySelector('.planner-remove-row');
+   function filterChapters(){const sid=subject.value;Array.from(chapter.options).forEach((o,i)=>{if(i===0)return;o.hidden=!!sid&&o.dataset.subject!==sid;});if(chapter.selectedOptions[0]&&chapter.selectedOptions[0].dataset.subject&&chapter.selectedOptions[0].dataset.subject!==sid)chapter.value='';}
+   subject.addEventListener('change',filterChapters);chapter.addEventListener('change',()=>{const opt=chapter.selectedOptions[0];if(opt&&opt.dataset.subject)subject.value=opt.dataset.subject;filterChapters();});remove.addEventListener('click',()=>{if(rows.querySelectorAll('.planner-chapter-row').length>1)row.remove();else{subject.value='';chapter.value='';filterChapters();}});filterChapters();
+ }
+ rows.querySelectorAll('.planner-chapter-row').forEach(wire);add.addEventListener('click',()=>{const row=tpl.content.firstElementChild.cloneNode(true);rows.appendChild(row);wire(row);row.scrollIntoView({behavior:'smooth',block:'nearest'});});
 })();
 </script>
 {% endblock %}
