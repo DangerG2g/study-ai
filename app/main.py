@@ -773,6 +773,18 @@ def delete_planner_task(request: Request, task_id: int, csrf_token: str = Form(.
     db.delete_study_plan_task(user['id'],task_id)
     return RedirectResponse(f'/planner?program_id={program_id}&status=task_deleted' if program_id.isdigit() else '/planner?status=task_deleted',303)
 
+@app.get('/appearance', response_class=HTMLResponse)
+def appearance_page(request: Request):
+    user = require_user(request)
+    return render(request, 'appearance.html', {'appearance_options': [
+        {'name': 'Workspace / Canvas', 'tag': 'Current direction', 'description': 'A focused working area with compact navigation, practical panels, and room for study tools.', 'style': 'canvas'},
+        {'name': 'Editorial Study Desk', 'tag': 'Spacious & calm', 'description': 'Large editorial headings, an agenda-led dashboard, and clear reading hierarchy.', 'style': 'editorial'},
+        {'name': 'Bento Learning Grid', 'tag': 'Visual overview', 'description': 'Modular tiles for daily tasks, study time, revision, and progress at a glance.', 'style': 'bento'},
+        {'name': 'Notebook Journal', 'tag': 'Academic & warm', 'description': 'Notebook-inspired panels, section dividers, and a study-journal feel.', 'style': 'journal'},
+        {'name': 'Professional Studio', 'tag': 'Structured & precise', 'description': 'A denser professional workspace with clear data tables and analytics.', 'style': 'studio'},
+    ]})
+
+
 @app.get('/analytics', response_class=HTMLResponse)
 def analytics_page(request: Request):
     user = require_user(request)
