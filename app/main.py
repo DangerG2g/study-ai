@@ -780,19 +780,42 @@ def analytics_page(request: Request):
     timer_totals = db.study_time_totals(user['id'])
     analytics = db.study_analytics(user['id'])
     total_seconds = int(timer_totals['total_seconds'] or 0)
+    completed_sessions = int(timer_totals['completed_sessions'] or 0)
+    quiz_attempts = int(analytics['quiz']['attempts'] or 0)
+    by_chapter_count = len(analytics.get('by_chapter') or [])
     milestones = [
-        {'title': 'First Focus', 'description': 'Complete your first saved study session.', 'goal': 1, 'value': int(timer_totals['completed_sessions']), 'icon': '✦'},
-        {'title': 'Five Sessions', 'description': 'Complete five focused study sessions.', 'goal': 5, 'value': int(timer_totals['completed_sessions']), 'icon': '◷'},
+        {'title': 'First Focus', 'description': 'Complete your first saved study session.', 'goal': 1, 'value': completed_sessions, 'icon': '✦'},
+        {'title': 'Five Sessions', 'description': 'Complete five focused study sessions.', 'goal': 5, 'value': completed_sessions, 'icon': '◷'},
+        {'title': 'Session Builder', 'description': 'Complete 10 focused study sessions.', 'goal': 10, 'value': completed_sessions, 'icon': '▣'},
+        {'title': 'Study Regular', 'description': 'Complete 25 focused study sessions.', 'goal': 25, 'value': completed_sessions, 'icon': '◆'},
         {'title': 'One Hour Club', 'description': 'Record one hour of focused study.', 'goal': 3600, 'value': total_seconds, 'icon': '⌛'},
         {'title': 'Five Hour Club', 'description': 'Record five hours of focused study.', 'goal': 18000, 'value': total_seconds, 'icon': '★'},
-        {'title': 'Revision Starter', 'description': 'Attempt your first saved quiz.', 'goal': 1, 'value': int(analytics['quiz']['attempts'] or 0), 'icon': '◎'},
+        {'title': 'Ten Hour Milestone', 'description': 'Record 10 hours of focused study.', 'goal': 36000, 'value': total_seconds, 'icon': '🏆'},
+        {'title': 'Revision Starter', 'description': 'Attempt your first saved quiz.', 'goal': 1, 'value': quiz_attempts, 'icon': '◎'},
+        {'title': 'Quiz Explorer', 'description': 'Attempt five quizzes.', 'goal': 5, 'value': quiz_attempts, 'icon': '✎'},
+        {'title': 'Quiz Enthusiast', 'description': 'Attempt 20 quizzes.', 'goal': 20, 'value': quiz_attempts, 'icon': '♧'},
+        {'title': 'Chapter Explorer', 'description': 'Study sessions across three or more chapters.', 'goal': 3, 'value': by_chapter_count, 'icon': '▤'},
+        {'title': 'Daily Momentum', 'description': 'Record at least 30 minutes of study today.', 'goal': 1800, 'value': int(timer_totals['today_seconds'] or 0), 'icon': '↗'},
     ]
     for item in milestones:
         item['unlocked'] = item['value'] >= item['goal']
         item['progress'] = min(100, round(100 * item['value'] / item['goal'])) if item['goal'] else 100
+    recent_study_sessions = db.list_study_sessions(user['id'], 30)
+    today = datetime.now().date()
+    study_week = []
+    for offset in range(6, -1, -1):
+        day = today - timedelta(days=offset)
+        seconds = 0
+        for session in recent_study_sessions:
+            ended = session.get('ended_at') if isinstance(session, dict) else getattr(session, 'ended_at', None)
+            elapsed = session.get('elapsed_seconds', 0) if isinstance(session, dict) else getattr(session, 'elapsed_seconds', 0)
+            if ended and hasattr(ended, 'date') and ended.date() == day:
+                seconds += int(elapsed or 0)
+        study_week.append({'label': day.strftime('%a'), 'date': day.strftime('%d %b'), 'minutes': round(seconds / 60)})
+    max_week_minutes = max([d['minutes'] for d in study_week] + [1])
     return render(request, 'analytics.html', {'subjects': subjects, 'chapters': chapters, 'stats': stats,
-        'timer_totals': timer_totals, 'recent_study_sessions': db.list_study_sessions(user['id'], 30),
-        'analytics': analytics, 'milestones': milestones})
+        'timer_totals': timer_totals, 'recent_study_sessions': recent_study_sessions,
+        'analytics': analytics, 'milestones': milestones, 'study_week': study_week, 'max_week_minutes': max_week_minutes})
 
 
 @app.get('/quiz-revision', response_class=HTMLResponse)
