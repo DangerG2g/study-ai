@@ -664,3 +664,26 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:rgba(255,95,20
 @media(max-width:900px){.dashboard-planner-heading{align-items:flex-start;flex-direction:column}.dashboard-planner-actions{width:100%}.dashboard-planner-btn{flex:1}.dashboard-planner-overview{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-planner-metric-highlight{grid-column:1/-1}}
 @media(max-width:760px){.dashboard-planner-section{padding:15px;margin:20px 0 26px}.dashboard-planner-heading p{font-size:12px}.dashboard-planner-overview{gap:8px}.dashboard-planner-metric{padding:12px}.dashboard-planner-table{min-width:620px}.dashboard-timetable-modal{padding:10px}.dashboard-timetable-dialog{width:100%;max-height:94vh;padding:14px;border-radius:13px}.dashboard-timetable-dialog-head h2{font-size:20px}.dashboard-timetable-modal-table-wrap{max-height:calc(94vh - 190px)}.dashboard-timetable-dialog-foot{align-items:flex-start;flex-direction:column}}
 @media(max-width:440px){.dashboard-planner-overview{grid-template-columns:1fr}.dashboard-planner-metric-highlight{grid-column:auto}.dashboard-planner-actions{flex-direction:column;align-items:stretch}.dashboard-planner-btn{width:100%}}
+
+/* Level 8 refinement: separate timer workspace, compact dashboard preview, and collapsible timetable */
+.nav-link[href="/timer"]{color:inherit}
+.study-timer-panel{display:grid;gap:20px;padding:24px;border:1px solid rgba(151,135,255,.28);border-radius:20px;background:linear-gradient(135deg,rgba(89,73,173,.20),rgba(12,22,48,.86));box-shadow:0 18px 55px rgba(0,0,0,.18)}
+.study-timer-top{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.study-timer-top h2{margin:8px 0;font-size:clamp(1.25rem,2vw,1.8rem)}
+.study-timer-top p{margin:0;color:var(--muted,#aab4d0)}
+.study-timer-clock{font-variant-numeric:tabular-nums;font-size:clamp(2rem,4vw,3.4rem);font-weight:800;letter-spacing:.06em;padding:16px 22px;border-radius:16px;border:1px solid rgba(164,146,255,.35);background:rgba(6,12,31,.75);min-width:220px;text-align:center;color:#fff}
+.study-timer-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.study-timer-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.study-timer-stats>div{padding:15px;border-radius:14px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);display:grid;gap:6px}
+.study-timer-stats small{color:var(--muted,#aab4d0)}.study-timer-stats strong{font-size:1.25rem}
+.timer-start-form{margin-top:6px}.timer-page-card{max-width:1440px;margin:0 auto}.timer-page .planner-preferences-card,.timer-page .timer-history{margin-top:18px}
+.planner-collapse-toggle{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(158,145,255,.32);background:rgba(124,101,240,.13);color:inherit;border-radius:10px;padding:9px 13px;font:inherit;font-size:.88rem;font-weight:700;cursor:pointer;white-space:nowrap}
+.planner-collapse-toggle:hover{background:rgba(124,101,240,.24)}.collapse-chevron{font-size:1.1rem;line-height:1}.collapse-chevron.collapsed{transform:translateY(-1px)}
+#plannerTimetableBody{min-width:0}#plannerTimetableBody[hidden]{display:none!important}
+.planner-timetable-toolbar{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.planner-timetable-toolbar label{min-width:170px;flex:1}
+.planner-table-wrap{max-width:100%;overflow:auto;border-radius:14px;overscroll-behavior:contain}.planner-table{width:100%;min-width:820px;border-collapse:separate;border-spacing:0}.planner-table th,.planner-table td{vertical-align:middle}.planner-table td{overflow-wrap:anywhere}.planner-row-actions,.planner-inline-edit{display:flex;gap:7px;flex-wrap:wrap}
+/* Dashboard planner preview stays inside its card instead of forcing the full-page table width. */
+.dashboard-planner-section,.dashboard-planner-card,.dashboard-planner-preview{min-width:0;max-width:100%;box-sizing:border-box}.dashboard-planner-table-wrap{width:100%;max-width:100%;overflow-x:auto;overflow-y:hidden;contain:inline-size}.dashboard-planner-table{width:100%;min-width:640px;border-collapse:separate;border-spacing:0}.dashboard-planner-table th,.dashboard-planner-table td{padding:12px 14px;white-space:normal;overflow-wrap:anywhere}.dashboard-planner-table td:last-child{white-space:nowrap}.dashboard-planner-section .dashboard-modal-actions{display:flex;gap:6px;flex-wrap:wrap}.dashboard-planner-section .dashboard-modal-actions button,.dashboard-planner-section .dashboard-modal-actions a{max-width:100%}
+/* Prevent the dashboard timetable popup from extending beyond the viewport. */
+.dashboard-planner-modal,.planner-dashboard-modal,.dashboard-timetable-modal{box-sizing:border-box;width:min(96vw,1280px);max-width:96vw;max-height:88vh;overflow:hidden}.dashboard-planner-modal .planner-table-wrap,.planner-dashboard-modal .planner-table-wrap,.dashboard-timetable-modal .planner-table-wrap{max-height:58vh;overflow:auto}.dashboard-planner-modal table,.planner-dashboard-modal table,.dashboard-timetable-modal table{min-width:760px}
+@media(max-width:850px){.study-timer-stats{grid-template-columns:1fr}.study-timer-clock{min-width:0;width:100%;box-sizing:border-box}.study-timer-top{align-items:stretch}.dashboard-planner-modal,.planner-dashboard-modal,.dashboard-timetable-modal{width:96vw;max-width:96vw}.planner-timetable-toolbar{align-items:stretch}}
