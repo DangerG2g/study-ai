@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Appearance · Knowly{% endblock %}
+{% block crumb %}Workspace / Appearance{% endblock %}
+{% block content %}
+<div class="appearance-page">
+  <header class="appearance-hero">
+    <div><span class="appearance-kicker">WORKSPACE SETTINGS</span><h1>Appearance & interface ideas</h1><p>Explore possible visual directions for Knowly. This gallery is for reviewing design concepts; choosing a card does not change the live interface yet.</p></div>
+    <div class="appearance-hero-mark" aria-hidden="true">▧</div>
+  </header>
+  <div class="appearance-note"><strong>Current interface: Workspace / Canvas</strong><span>Theme switching is intentionally disabled for now. Pick a direction to review its layout concept and details.</span></div>
+  <section class="appearance-grid" aria-label="Interface design concepts">
+    {% for item in appearance_options %}
+    <article class="appearance-option">
+      <div class="appearance-preview preview-{{ item.style }}" aria-hidden="true">
+        <div class="preview-top"><i></i><i></i><i></i><span></span></div>
+        <div class="preview-layout"><div class="preview-rail"><b></b><b></b><b></b><b></b><b></b></div><div class="preview-work">
+          {% if item.style == 'editorial' %}<div class="preview-big-title"></div><div class="preview-line short"></div><div class="preview-agenda"><i></i><i></i><i></i></div>
+          {% elif item.style == 'bento' %}<div class="preview-bento-grid"><i></i><i></i><i></i><i></i></div>
+          {% elif item.style == 'journal' %}<div class="preview-paper-title"></div><div class="preview-line"></div><div class="preview-paper-lines"><i></i><i></i><i></i><i></i></div>
+          {% elif item.style == 'studio' %}<div class="preview-stats"><i></i><i></i><i></i></div><div class="preview-table"><i></i><i></i><i></i><i></i></div>
+          {% else %}<div class="preview-toolbar"></div><div class="preview-split"><i></i><i></i></div><div class="preview-line short"></div>
+          {% endif %}
+        </div></div>
+      </div>
+      <div class="appearance-option-body"><div class="appearance-option-title"><h2>{{ item.name }}</h2><span>{{ item.tag }}</span></div><p>{{ item.description }}</p><button type="button" class="appearance-review-btn" data-appearance-name="{{ item.name }}" data-appearance-description="{{ item.description }}">Review concept <span aria-hidden="true">↗</span></button></div>
+    </article>
+    {% endfor %}
+  </section>
+  <div class="appearance-detail" id="appearanceDetail" hidden aria-live="polite"><div><span class="appearance-kicker">CONCEPT DETAILS</span><h2 id="appearanceDetailTitle"></h2><p id="appearanceDetailText"></p></div><button type="button" id="appearanceDetailClose" aria-label="Close concept details">Close</button></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){const detail=document.getElementById('appearanceDetail');const title=document.getElementById('appearanceDetailTitle');const text=document.getElementById('appearanceDetailText');document.querySelectorAll('[data-appearance-name]').forEach(btn=>btn.addEventListener('click',()=>{title.textContent=btn.dataset.appearanceName;text.textContent=btn.dataset.appearanceDescription+' This is a design reference only; it does not change your current settings or study data.';detail.hidden=false;detail.scrollIntoView({behavior:'smooth',block:'nearest'});}));document.getElementById('appearanceDetailClose')?.addEventListener('click',()=>{detail.hidden=true;});})();
+</script>
+{% endblock %}
