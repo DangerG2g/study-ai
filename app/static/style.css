@@ -586,3 +586,27 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:rgba(255,95,20
 .pdf-original-layout-with-headings .pdf-page-chip small{white-space:normal;line-height:1.5}
 @media(max-width:900px){.pdf-original-layout-with-headings{grid-template-columns:1fr!important}.pdf-original-layout-with-headings .pdf-original-primary iframe{height:72vh;min-height:560px}.pdf-original-layout-with-headings .pdf-page-sidebar{position:static;max-height:300px}.pdf-original-layout-with-headings .pdf-page-sidebar .pdf-page-list{max-height:245px}}
 @media(max-width:600px){.pdf-original-layout-with-headings .pdf-original-primary iframe{height:66vh;min-height:470px}}
+
+
+/* PDF reader refinement: hide the embedded browser PDF thumbnail rail via toolbar=0,
+   keep Knowly's page-heading/text sidebar on the right, and avoid layout shifts. */
+.pdf-original-layout-with-headings { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); gap: 18px; align-items: stretch; }
+.pdf-original-layout-with-headings .pdf-original-primary { min-width: 0; }
+.pdf-original-layout-with-headings .pdf-original-primary iframe { display: block; width: 100%; height: min(76vh, 900px); min-height: 560px; border: 0; background: #fff; }
+.pdf-original-layout-with-headings .pdf-page-sidebar { min-width: 0; max-height: min(76vh, 900px); overflow: hidden; }
+.pdf-original-layout-with-headings .pdf-page-list { max-height: calc(min(76vh, 900px) - 64px); overflow-y: auto; overscroll-behavior: contain; }
+@media (max-width: 900px) { .pdf-original-layout-with-headings { grid-template-columns: minmax(0, 1fr); } .pdf-original-layout-with-headings .pdf-page-sidebar { max-height: 360px; } .pdf-original-layout-with-headings .pdf-page-list { max-height: 290px; } .pdf-original-layout-with-headings .pdf-original-primary iframe { height: 68vh; min-height: 420px; } }
+
+
+/* Knowly sidebar: independently scroll navigation and account actions */
+.sidebar{height:100vh;height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(164,151,255,.42) transparent;padding-bottom:18px;box-sizing:border-box}
+.sidebar::-webkit-scrollbar{width:7px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{background:rgba(164,151,255,.35);border-radius:99px}
+.sidebar .brand{flex-shrink:0}
+.sidebar nav,.sidebar .side-label,.sidebar .mini-note,.sidebar .sidebar-bottom{flex-shrink:0}
+.sidebar .sidebar-bottom{margin-top:24px;padding-bottom:8px}
+@media(max-width:700px){.sidebar{height:auto;max-height:none;overflow:visible}}
+
+/* AI quiz builder */
+.ai-quiz-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:end;margin:20px 0}.ai-quiz-form label{display:grid;gap:7px;color:#b9bfd8;font-size:12px}.ai-quiz-form select{width:100%;min-height:44px;padding:10px 12px;border-radius:12px;color:#f5f5ff;background:#11152a;border:1px solid rgba(167,157,255,.24)}.ai-quiz-form button{justify-self:start}.quiz-generation-error{margin:15px 0;padding:14px;border-radius:12px;border:1px solid rgba(255,168,100,.25);background:rgba(255,168,100,.08);color:#ffd2ad}.generated-quiz{margin-top:25px}.generated-quiz-head{display:flex;align-items:center;justify-content:space-between;gap:16px}.generated-quiz-head h3{margin:5px 0 12px}.generated-question{margin:15px 0;padding:20px;border:1px solid rgba(167,157,255,.2);border-radius:16px;background:rgba(255,255,255,.025)}.generated-question h4{font-size:16px;line-height:1.5}.generated-options{display:grid;gap:9px}.generated-option{padding:12px 14px;text-align:left;border:1px solid rgba(167,157,255,.2);border-radius:11px;background:rgba(255,255,255,.035);color:#e8e9f8;cursor:pointer}.generated-option:hover:not(:disabled){border-color:#a99dff}.generated-option.correct{border-color:#4dd6a4;background:rgba(77,214,164,.12)}.generated-option.incorrect{border-color:#ff8a9b;background:rgba(255,138,155,.1)}.generated-option:disabled{cursor:default}.generated-feedback{min-height:20px;color:#c9c4ff;font-size:13px}.generated-question details{color:#b5bdd7;font-size:13px}.generated-question summary{cursor:pointer;color:#b3aaff}.generated-question details small{color:#9d8fff}@media(max-width:700px){.ai-quiz-form{grid-template-columns:1fr}.generated-quiz-head{align-items:flex-start;flex-direction:column}}
