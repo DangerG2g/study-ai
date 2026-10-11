@@ -142,5 +142,64 @@ document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.
 })();
 </script>
 
+
+<script>
+/* Keep the sidebar audio element alive while switching between Knowly pages. */
+(function(){
+  if (window.__knowlyCanvasRouterInstalled) return;
+  window.__knowlyCanvasRouterInstalled = true;
+  function activateScripts(container){
+    container.querySelectorAll('script').forEach(old=>{
+      const s=document.createElement('script');
+      for(const a of old.attributes) s.setAttribute(a.name,a.value);
+      s.textContent=old.textContent;
+      old.replaceWith(s);
+    });
+  }
+  function markActive(path){
+    document.querySelectorAll('.workspace-sidebar .nav-link').forEach(a=>{
+      const u=new URL(a.href,location.origin).pathname;
+      a.classList.toggle('active',u===path || (u!=='/' && path.startsWith(u)));
+    });
+  }
+  async function navigate(url,push=true){
+    const target=new URL(url,location.href);
+    if(target.origin!==location.origin || target.pathname==='/logout' || target.pathname.startsWith('/static/')){location.href=target.href;return;}
+    const canvas=document.querySelector('.workspace-canvas');
+    if(!canvas){location.href=target.href;return;}
+    canvas.classList.add('canvas-loading');
+    try{
+      const response=await fetch(target.href,{headers:{'X-Requested-With':'KnowlyCanvas'}});
+      if(!response.ok || !response.headers.get('content-type')?.includes('text/html')){location.href=target.href;return;}
+      const html=await response.text();
+      const doc=new DOMParser().parseFromString(html,'text/html');
+      const next=doc.querySelector('.workspace-canvas');
+      if(!next){location.href=target.href;return;}
+      canvas.innerHTML=next.innerHTML;
+      const crumb=document.querySelector('.workspace-topbar .crumb');
+      const nextCrumb=doc.querySelector('.workspace-topbar .crumb');
+      if(crumb&&nextCrumb)crumb.innerHTML=nextCrumb.innerHTML;
+      document.title=doc.title || 'Knowly';
+      if(push) history.pushState({knowlyCanvas:true},'',target.href);
+      markActive(target.pathname);
+      activateScripts(canvas);
+      window.scrollTo({top:0,behavior:'instant'});
+      document.dispatchEvent(new CustomEvent('knowly:pagechange',{detail:{path:target.pathname}}));
+    }catch(err){location.href=target.href;}
+    finally{canvas.classList.remove('canvas-loading');}
+  }
+  document.addEventListener('click',e=>{
+    const a=e.target.closest('a[href]');
+    if(!a || e.defaultPrevented || e.button!==0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.target==='_blank' || a.hasAttribute('download'))return;
+    const u=new URL(a.href,location.href);
+    if(u.origin!==location.origin || u.pathname==='/logout' || a.closest('form'))return;
+    if(a.closest('.workspace-sidebar') || a.classList.contains('brand') || a.closest('.workspace-canvas')){
+      e.preventDefault(); navigate(u.href,true);
+    }
+  });
+  window.addEventListener('popstate',()=>navigate(location.href,false));
+})();
+</script>
+
 {% block scripts %}{% endblock %}
 </body></html>
