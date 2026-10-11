@@ -646,4 +646,4 @@ def planner_chapter_candidates(user_id):
             LEFT JOIN quiz_attempts a ON a.chapter_id=c.id AND a.user_id=c.user_id
             WHERE c.user_id=%s GROUP BY c.id,c.name,c.subject_id,s.name
             ORDER BY CASE WHEN COUNT(a.id)=0 THEN 0 ELSE 1 END,
-            CASE WHEN COUNT(a.id)=0 THEN 0 ELSE AVG(a.percentage) END ASC,c.name COLLATE "C""",(user_id,)).fetchall()
+            CASE WHEN COUNT(a.id)=0 THEN 0 ELSE AVG(a.percentage) END ASC,c.name""",(user_id,)).fetchall()
