@@ -578,6 +578,84 @@ def assistant_ask(request: Request, question: str = Form(...), csrf_token: str =
     })
 
 
+@app.get('/planner', response_class=HTMLResponse)
+def study_planner_page(request: Request, status: str = ''):
+    user = require_user(request)
+    subjects, chapters, stats = db.dashboard_data(user['id'])
+    tasks = db.list_study_plan_tasks(user['id'], 100)
+    candidates = db.planner_chapter_candidates(user['id'])
+    pending = sum(1 for task in tasks if not task['completed'])
+    completed = sum(1 for task in tasks if task['completed'])
+    return render(request, 'planner.html', {'subjects':subjects,'chapters':chapters,'tasks':tasks,
+        'candidates':candidates,'pending_count':pending,'completed_count':completed,'status':status,
+        'today':datetime.now().date().isoformat()})
+
+@app.post('/planner/tasks')
+def create_planner_task(request: Request, subject_id: int = Form(...), chapter_id: str = Form(''), title: str = Form(...),
+    task_type: str = Form('revise'), due_date: str = Form(...), duration_minutes: int = Form(25), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    allowed_types={'revise','quiz','flashcards','read','practice','audio'}
+    if not title.strip() or len(title.strip())>160:
+        return RedirectResponse('/planner?status=invalid_title',303)
+    try:
+        due=datetime.strptime(due_date,'%Y-%m-%d').date()
+    except ValueError:
+        return RedirectResponse('/planner?status=invalid_date',303)
+    duration=max(5,min(int(duration_minutes),240))
+    chapter=int(chapter_id) if chapter_id.strip().isdigit() else None
+    if task_type not in allowed_types: task_type='revise'
+    task_id=db.add_study_plan_task(user['id'],subject_id,chapter,title.strip(),task_type,due,duration,'normal','Added by you')
+    return RedirectResponse('/planner?status=task_added' if task_id else '/planner?status=invalid_chapter',303)
+
+@app.post('/planner/generate')
+def generate_study_plan(request: Request, days: int = Form(7), daily_minutes: int = Form(45), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    days=max(1,min(int(days),14)); daily_minutes=max(15,min(int(daily_minutes),240))
+    candidates=db.planner_chapter_candidates(user['id'])
+    if not candidates: return RedirectResponse('/planner?status=no_chapters',303)
+    today=datetime.now().date(); created=0
+    # Prioritize chapters with no attempts first, then lower average scores.
+    for day_index in range(min(days,len(candidates))):
+        chapter=candidates[day_index]
+        if chapter['attempts']==0:
+            task_type='read'; title=f"Review {chapter['chapter_name']} basics"; rationale='No quiz attempts yet — build a first-pass understanding.'; priority='high'
+        elif chapter['average'] < 60:
+            task_type='practice'; title=f"Strengthen {chapter['chapter_name']}"; rationale=f"Recent quiz average is {chapter['average']:.0f}% — prioritize practice."; priority='high'
+        elif chapter['average'] < 80:
+            task_type='quiz'; title=f"Practise {chapter['chapter_name']}"; rationale=f"Quiz average is {chapter['average']:.0f}% — another practice session can help."; priority='normal'
+        else:
+            task_type='flashcards'; title=f"Quick revision: {chapter['chapter_name']}"; rationale=f"Quiz average is {chapter['average']:.0f}% — reinforce recall with flashcards."; priority='low'
+        task_id=db.add_study_plan_task(user['id'],chapter['subject_id'],chapter['chapter_id'],title,task_type,
+            today+timedelta(days=day_index),daily_minutes,priority,rationale)
+        if task_id: created+=1
+    return RedirectResponse(f'/planner?status=plan_created_{created}',303)
+
+@app.post('/planner/tasks/{task_id}/complete')
+def complete_planner_task(request: Request, task_id: int, csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    db.set_study_plan_task_completed(user['id'],task_id,True)
+    return RedirectResponse('/planner?status=task_completed',303)
+
+@app.post('/planner/tasks/{task_id}/reopen')
+def reopen_planner_task(request: Request, task_id: int, csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    db.set_study_plan_task_completed(user['id'],task_id,False)
+    return RedirectResponse('/planner?status=task_reopened',303)
+
+@app.post('/planner/tasks/{task_id}/reschedule')
+def reschedule_planner_task(request: Request, task_id: int, due_date: str = Form(...), csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    try: due=datetime.strptime(due_date,'%Y-%m-%d').date()
+    except ValueError: return RedirectResponse('/planner?status=invalid_date',303)
+    db.reschedule_study_plan_task(user['id'],task_id,due)
+    return RedirectResponse('/planner?status=task_rescheduled',303)
+
+@app.post('/planner/tasks/{task_id}/delete')
+def delete_planner_task(request: Request, task_id: int, csrf_token: str = Form(...)):
+    user=require_user(request); require_csrf(request,csrf_token)
+    db.delete_study_plan_task(user['id'],task_id)
+    return RedirectResponse('/planner?status=task_deleted',303)
+
 @app.get('/analytics', response_class=HTMLResponse)
 def analytics_page(request: Request):
     user = require_user(request)

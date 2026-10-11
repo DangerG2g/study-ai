@@ -119,6 +119,22 @@ CREATE TABLE IF NOT EXISTS revision_flashcards (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_revision_flashcards_user ON revision_flashcards(user_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS study_plan_tasks (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject_id BIGINT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    chapter_id BIGINT REFERENCES chapters(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    task_type VARCHAR(24) NOT NULL DEFAULT 'revise',
+    due_date DATE NOT NULL,
+    duration_minutes INTEGER NOT NULL DEFAULT 25,
+    priority VARCHAR(12) NOT NULL DEFAULT 'normal',
+    rationale TEXT NOT NULL DEFAULT '',
+    completed BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMPTZ NULL
+);
+CREATE INDEX IF NOT EXISTS idx_study_plan_tasks_user_date ON study_plan_tasks(user_id, due_date, completed);
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS file_type VARCHAR(10) NOT NULL DEFAULT 'pdf';
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS preview_data BYTEA NULL;
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS preview_page_count INTEGER NOT NULL DEFAULT 0;
@@ -588,3 +604,46 @@ def latest_flashcard_deck(user_id):
         return conn.execute("""SELECT f.id,f.cards,f.created_at,s.name AS subject_name,c.name AS chapter_name
             FROM revision_flashcards f JOIN subjects s ON s.id=f.subject_id LEFT JOIN chapters c ON c.id=f.chapter_id
             WHERE f.user_id=%s ORDER BY f.created_at DESC LIMIT 1""",(user_id,)).fetchone()
+
+
+# ---------- Adaptive study planner (additive) ----------
+def list_study_plan_tasks(user_id, limit=100):
+    with connect() as conn:
+        return conn.execute("""SELECT t.*,s.name AS subject_name,c.name AS chapter_name
+            FROM study_plan_tasks t JOIN subjects s ON s.id=t.subject_id
+            LEFT JOIN chapters c ON c.id=t.chapter_id
+            WHERE t.user_id=%s ORDER BY t.completed ASC,t.due_date ASC,t.created_at DESC LIMIT %s""",
+            (user_id,limit)).fetchall()
+
+def add_study_plan_task(user_id, subject_id, chapter_id, title, task_type, due_date, duration_minutes, priority='normal', rationale=''):
+    with connect() as conn:
+        row=conn.execute("""INSERT INTO study_plan_tasks(user_id,subject_id,chapter_id,title,task_type,due_date,duration_minutes,priority,rationale)
+            SELECT %s,s.id,%s,%s,%s,%s,%s,%s,%s FROM subjects s WHERE s.id=%s AND s.user_id=%s
+            AND (%s IS NULL OR EXISTS(SELECT 1 FROM chapters c WHERE c.id=%s AND c.subject_id=s.id AND c.user_id=%s))
+            RETURNING id""",(user_id,chapter_id,title,task_type,due_date,duration_minutes,priority,rationale,subject_id,user_id,chapter_id,chapter_id,user_id)).fetchone()
+        return row['id'] if row else None
+
+def set_study_plan_task_completed(user_id, task_id, completed):
+    with connect() as conn:
+        return conn.execute("""UPDATE study_plan_tasks SET completed=%s,
+            completed_at=CASE WHEN %s THEN CURRENT_TIMESTAMP ELSE NULL END
+            WHERE id=%s AND user_id=%s RETURNING id""",(completed,completed,task_id,user_id)).fetchone()
+
+def reschedule_study_plan_task(user_id, task_id, due_date):
+    with connect() as conn:
+        return conn.execute("UPDATE study_plan_tasks SET due_date=%s WHERE id=%s AND user_id=%s AND completed=FALSE RETURNING id",(due_date,task_id,user_id)).fetchone()
+
+def delete_study_plan_task(user_id, task_id):
+    with connect() as conn:
+        return conn.execute("DELETE FROM study_plan_tasks WHERE id=%s AND user_id=%s RETURNING id",(task_id,user_id)).fetchone()
+
+def planner_chapter_candidates(user_id):
+    with connect() as conn:
+        return conn.execute("""SELECT c.id AS chapter_id,c.name AS chapter_name,c.subject_id,s.name AS subject_name,
+            COUNT(a.id)::int AS attempts,COALESCE(AVG(a.percentage),0)::float AS average,
+            MAX(a.created_at) AS last_attempt
+            FROM chapters c JOIN subjects s ON s.id=c.subject_id AND s.user_id=c.user_id
+            LEFT JOIN quiz_attempts a ON a.chapter_id=c.id AND a.user_id=c.user_id
+            WHERE c.user_id=%s GROUP BY c.id,c.name,c.subject_id,s.name
+            ORDER BY CASE WHEN COUNT(a.id)=0 THEN 0 ELSE 1 END,
+            CASE WHEN COUNT(a.id)=0 THEN 0 ELSE AVG(a.percentage) END ASC,c.name COLLATE "C""",(user_id,)).fetchall()
