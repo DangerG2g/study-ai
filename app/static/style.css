@@ -687,3 +687,15 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:rgba(255,95,20
 /* Prevent the dashboard timetable popup from extending beyond the viewport. */
 .dashboard-planner-modal,.planner-dashboard-modal,.dashboard-timetable-modal{box-sizing:border-box;width:min(96vw,1280px);max-width:96vw;max-height:88vh;overflow:hidden}.dashboard-planner-modal .planner-table-wrap,.planner-dashboard-modal .planner-table-wrap,.dashboard-timetable-modal .planner-table-wrap{max-height:58vh;overflow:auto}.dashboard-planner-modal table,.planner-dashboard-modal table,.dashboard-timetable-modal table{min-width:760px}
 @media(max-width:850px){.study-timer-stats{grid-template-columns:1fr}.study-timer-clock{min-width:0;width:100%;box-sizing:border-box}.study-timer-top{align-items:stretch}.dashboard-planner-modal,.planner-dashboard-modal,.dashboard-timetable-modal{width:96vw;max-width:96vw}.planner-timetable-toolbar{align-items:stretch}}
+
+
+/* Dashboard timetable dialog: keep the entire dialog within the visible viewport. */
+.dashboard-timetable-modal{position:fixed!important;inset:0!important;z-index:1200!important;display:grid!important;place-items:center!important;box-sizing:border-box!important;width:100vw!important;height:100dvh!important;max-width:100vw!important;max-height:100dvh!important;padding:clamp(8px,2vw,22px)!important;overflow:hidden!important;}
+.dashboard-timetable-modal[hidden]{display:none!important}
+.dashboard-timetable-backdrop{position:absolute!important;inset:0!important}
+.dashboard-timetable-dialog{box-sizing:border-box!important;width:min(1180px,96vw)!important;max-width:96vw!important;height:auto!important;max-height:calc(100dvh - 32px)!important;min-height:0!important;overflow:hidden!important;margin:0!important;padding:clamp(12px,1.7vw,22px)!important;display:flex!important;flex-direction:column!important}
+.dashboard-timetable-dialog-head{flex:0 0 auto!important;min-width:0!important}
+.dashboard-timetable-modal-table-wrap{flex:1 1 auto!important;min-height:0!important;max-height:none!important;overflow:auto!important;width:100%!important;box-sizing:border-box!important}
+.dashboard-timetable-dialog-foot{flex:0 0 auto!important;flex-wrap:wrap!important}
+.dashboard-modal-table{min-width:760px!important;width:100%!important}
+@media(max-width:760px){.dashboard-timetable-modal{padding:8px!important}.dashboard-timetable-dialog{width:100%!important;max-width:100%!important;max-height:calc(100dvh - 16px)!important;padding:12px!important}.dashboard-timetable-dialog-head{gap:8px!important}.dashboard-timetable-dialog-head h2{font-size:19px!important}.dashboard-timetable-modal-table-wrap{max-height:none!important}.dashboard-timetable-dialog-foot{padding-top:10px!important}}
