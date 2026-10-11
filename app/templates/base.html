@@ -42,7 +42,7 @@
             <option value="piano-focus.mp3">Gentle piano</option>
             <option value="forest-ambience.mp3">Forest ambience</option>
           </select>
-          <audio id="studyAudioElement" preload="none" loop></audio>
+          <audio id="studyAudioElement" preload="auto" loop playsinline></audio>
           <div class="study-audio-controls">
             <button type="button" id="studyAudioPlay" class="study-audio-play" aria-label="Play study audio">▶ Play</button>
             <button type="button" id="studyAudioStop" class="study-audio-stop" aria-label="Stop study audio">■</button>
@@ -131,15 +131,18 @@ document.addEventListener('click',e=>{if(e.target.classList.contains('modal'))e.
  if(!select||!audio||!play)return;
  const tracks={'lofi-beats.mp3':'Lo-fi beats','rain-window.mp3':'Rain on the window','soft-guitar.mp3':'Soft guitar','piano-focus.mp3':'Gentle piano','forest-ambience.mp3':'Forest ambience'};
  let wantedPlay=false;
- function setTrack(filename){const next='/static/audio/'+filename;if(!audio.src.endsWith(next)){audio.src=next;audio.load();}try{localStorage.setItem('knowly-study-audio-track',filename)}catch(e){}}
+ function trackUrl(filename){return new URL('/static/audio/'+filename,window.location.origin).href;}
+ function setTrack(filename){const next=trackUrl(filename);if(audio.src!==next){audio.pause();audio.src=next;audio.load();}try{localStorage.setItem('knowly-study-audio-track',filename)}catch(e){}}
+ function showError(){const code=audio.error?audio.error.code:0;const messages={1:'Playback was cancelled.',2:'Audio could not load. Check that the MP3 files were committed to app/static/audio/.',3:'This audio file could not be decoded. Re-upload the MP3 file.',4:'Audio file not found. Confirm the file exists at app/static/audio/.'};status.textContent=messages[code]||'Could not play audio. Check the audio files and try again.';play.textContent='▶ Play';if(dot)dot.classList.remove('is-playing');}
  try{const saved=localStorage.getItem('knowly-study-audio-track');if(saved&&tracks[saved])select.value=saved}catch(e){}
  audio.loop=true;audio.volume=Number(volume?.value||0.35);setTrack(select.value);
- select.addEventListener('change',()=>{const resume=!audio.paused||wantedPlay;setTrack(select.value);status.textContent=tracks[select.value]+' selected · loops automatically';if(resume){wantedPlay=true;audio.play().then(()=>{status.textContent='Playing '+tracks[select.value]+' · looping'}).catch(()=>{status.textContent='Press Play to start the selected audio'})}});
- play.addEventListener('click',()=>{if(audio.paused){wantedPlay=true;audio.play().then(()=>{play.textContent='❚❚ Pause';status.textContent='Playing '+tracks[select.value]+' · looping';if(dot)dot.classList.add('is-playing')}).catch(()=>{status.textContent='Could not play audio. Refresh and try again.'})}else{audio.pause();wantedPlay=false;play.textContent='▶ Play';status.textContent='Paused';if(dot)dot.classList.remove('is-playing')}});
+ select.addEventListener('change',()=>{const resume=!audio.paused||wantedPlay;setTrack(select.value);status.textContent=tracks[select.value]+' selected · loops automatically';if(resume){wantedPlay=true;audio.play().then(()=>{status.textContent='Playing '+tracks[select.value]+' · looping'}).catch(showError)}});
+ play.addEventListener('click',()=>{if(audio.paused){wantedPlay=true;status.textContent='Loading '+tracks[select.value]+'…';setTrack(select.value);audio.play().then(()=>{play.textContent='❚❚ Pause';status.textContent='Playing '+tracks[select.value]+' · looping';if(dot)dot.classList.add('is-playing')}).catch(showError)}else{audio.pause();wantedPlay=false;play.textContent='▶ Play';status.textContent='Paused';if(dot)dot.classList.remove('is-playing')}});
  stop?.addEventListener('click',()=>{audio.pause();audio.currentTime=0;wantedPlay=false;play.textContent='▶ Play';status.textContent='Stopped';if(dot)dot.classList.remove('is-playing')});
  volume?.addEventListener('input',()=>{audio.volume=Number(volume.value)});
- audio.addEventListener('error',()=>{status.textContent='Audio unavailable. Ensure app/static/audio files were uploaded.'});
- audio.addEventListener('play',()=>{play.textContent='❚❚ Pause';if(dot)dot.classList.add('is-playing')});audio.addEventListener('pause',()=>{play.textContent='▶ Play';if(dot)dot.classList.remove('is-playing')});
+ audio.addEventListener('error',showError);
+ audio.addEventListener('playing',()=>{play.textContent='❚❚ Pause';status.textContent='Playing '+tracks[select.value]+' · looping';if(dot)dot.classList.add('is-playing')});
+ audio.addEventListener('pause',()=>{if(!wantedPlay){play.textContent='▶ Play';if(dot)dot.classList.remove('is-playing')}});
 })();
 </script>
 
