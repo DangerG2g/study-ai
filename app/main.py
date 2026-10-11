@@ -579,23 +579,33 @@ def assistant_ask(request: Request, question: str = Form(...), csrf_token: str =
 
 
 @app.get('/planner', response_class=HTMLResponse)
-def study_planner_page(request: Request, status: str = '', program_id: str = ''):
+def study_planner_page(request: Request, status: str = '', program_id: str = '', new: str = ''):
     user = require_user(request)
     subjects, chapters, stats = db.dashboard_data(user['id'])
-    tasks = db.list_study_plan_tasks(user['id'], 300)
+    tasks = db.list_study_plan_tasks(user['id'], 1500)
     candidates = db.planner_chapter_candidates(user['id'])
     programs = db.list_study_plan_programs(user['id'])
-    selected_program_id = int(program_id) if program_id.isdigit() else (programs[0]['id'] if programs else None)
+    selected_program_id = int(program_id) if program_id.isdigit() else (None if new == '1' else (programs[0]['id'] if programs else None))
     selected_program = db.get_study_plan_program(user['id'], selected_program_id) if selected_program_id else None
     program_chapters = db.list_program_chapters(user['id'], selected_program_id) if selected_program_id else []
     program_tasks = [t for t in tasks if selected_program_id and t.get('program_id') == selected_program_id]
+    if selected_program is None and programs and new != '1':
+        selected_program_id=programs[0]['id']
+        selected_program=programs[0]
+        program_chapters=db.list_program_chapters(user['id'],selected_program_id)
+        program_tasks=[t for t in tasks if t.get('program_id') == selected_program_id]
     pending = sum(1 for task in tasks if not task['completed'])
     completed = sum(1 for task in tasks if task['completed'])
+    program_completed=sum(1 for task in program_tasks if task['completed'])
+    program_pending=sum(1 for task in program_tasks if not task['completed'])
+    program_progress=round(100*program_completed/len(program_tasks)) if program_tasks else 0
+    planned_minutes=sum(int(task['duration_minutes'] or 0) for task in program_tasks)
     return render(request, 'planner.html', {'subjects':subjects,'chapters':chapters,'tasks':tasks,
         'program_tasks':program_tasks,'programs':programs,'selected_program':selected_program,
         'selected_program_id':selected_program_id,'program_chapters':program_chapters,
         'candidates':candidates,'pending_count':pending,'completed_count':completed,'status':status,
-        'today':datetime.now().date().isoformat()})
+        'program_completed':program_completed,'program_pending':program_pending,'program_progress':program_progress,
+        'planned_minutes':planned_minutes,'today':datetime.now().date().isoformat()})
 
 @app.post('/planner/program')
 def save_study_program(request: Request, title: str = Form('My study plan'), program_id: str = Form(''),
@@ -612,7 +622,7 @@ def save_study_program(request: Request, title: str = Form('My study plan'), pro
     if not selections: return RedirectResponse('/planner?status=no_chapters_selected',303)
     pid=int(program_id) if program_id.isdigit() else None
     saved,created=db.save_custom_study_program(user['id'],pid,title,start,days,int(hours_per_day*60),selections)
-    if not saved: return RedirectResponse('/planner?status=no_chapters_selected',303)
+    if not saved: return RedirectResponse('/planner?status=plan_too_short',303)
     return RedirectResponse(f'/planner?program_id={saved}&status=program_saved_{created}',303)
 
 @app.post('/planner/tasks')
@@ -655,31 +665,41 @@ def generate_study_plan(request: Request, days: int = Form(7), daily_minutes: in
         if task_id: created+=1
     return RedirectResponse(f'/planner?status=plan_created_{created}',303)
 
+@app.post('/planner/tasks/{task_id}/edit')
+def edit_planner_task(request: Request, task_id: int, title: str = Form(...), duration_minutes: int = Form(25),
+    task_type: str = Form('revise'), csrf_token: str = Form(...), program_id: str = Form('')):
+    user=require_user(request); require_csrf(request,csrf_token)
+    clean_title=title.strip()
+    if not clean_title or len(clean_title)>160:
+        return RedirectResponse(f'/planner?program_id={program_id}&status=invalid_title' if program_id.isdigit() else '/planner?status=invalid_title',303)
+    db.update_study_plan_task(user['id'],task_id,clean_title,duration_minutes,task_type)
+    return RedirectResponse(f'/planner?program_id={program_id}&status=task_updated' if program_id.isdigit() else '/planner?status=task_updated',303)
+
 @app.post('/planner/tasks/{task_id}/complete')
-def complete_planner_task(request: Request, task_id: int, csrf_token: str = Form(...)):
+def complete_planner_task(request: Request, task_id: int, csrf_token: str = Form(...), program_id: str = Form('')):
     user=require_user(request); require_csrf(request,csrf_token)
     db.set_study_plan_task_completed(user['id'],task_id,True)
-    return RedirectResponse('/planner?status=task_completed',303)
+    return RedirectResponse(f'/planner?program_id={program_id}&status=task_completed' if program_id.isdigit() else '/planner?status=task_completed',303)
 
 @app.post('/planner/tasks/{task_id}/reopen')
-def reopen_planner_task(request: Request, task_id: int, csrf_token: str = Form(...)):
+def reopen_planner_task(request: Request, task_id: int, csrf_token: str = Form(...), program_id: str = Form('')):
     user=require_user(request); require_csrf(request,csrf_token)
     db.set_study_plan_task_completed(user['id'],task_id,False)
-    return RedirectResponse('/planner?status=task_reopened',303)
+    return RedirectResponse(f'/planner?program_id={program_id}&status=task_reopened' if program_id.isdigit() else '/planner?status=task_reopened',303)
 
 @app.post('/planner/tasks/{task_id}/reschedule')
-def reschedule_planner_task(request: Request, task_id: int, due_date: str = Form(...), csrf_token: str = Form(...)):
+def reschedule_planner_task(request: Request, task_id: int, due_date: str = Form(...), csrf_token: str = Form(...), program_id: str = Form('')):
     user=require_user(request); require_csrf(request,csrf_token)
     try: due=datetime.strptime(due_date,'%Y-%m-%d').date()
     except ValueError: return RedirectResponse('/planner?status=invalid_date',303)
     db.reschedule_study_plan_task(user['id'],task_id,due)
-    return RedirectResponse('/planner?status=task_rescheduled',303)
+    return RedirectResponse(f'/planner?program_id={program_id}&status=task_rescheduled' if program_id.isdigit() else '/planner?status=task_rescheduled',303)
 
 @app.post('/planner/tasks/{task_id}/delete')
-def delete_planner_task(request: Request, task_id: int, csrf_token: str = Form(...)):
+def delete_planner_task(request: Request, task_id: int, csrf_token: str = Form(...), program_id: str = Form('')):
     user=require_user(request); require_csrf(request,csrf_token)
     db.delete_study_plan_task(user['id'],task_id)
-    return RedirectResponse('/planner?status=task_deleted',303)
+    return RedirectResponse(f'/planner?program_id={program_id}&status=task_deleted' if program_id.isdigit() else '/planner?status=task_deleted',303)
 
 @app.get('/analytics', response_class=HTMLResponse)
 def analytics_page(request: Request):

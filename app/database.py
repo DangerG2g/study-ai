@@ -656,6 +656,14 @@ def reschedule_study_plan_task(user_id, task_id, due_date):
     with connect() as conn:
         return conn.execute("UPDATE study_plan_tasks SET due_date=%s WHERE id=%s AND user_id=%s AND completed=FALSE RETURNING id",(due_date,task_id,user_id)).fetchone()
 
+def update_study_plan_task(user_id, task_id, title, duration_minutes, task_type):
+    allowed={'revise','quiz','flashcards','read','practice','audio'}
+    if task_type not in allowed: task_type='revise'
+    with connect() as conn:
+        return conn.execute("""UPDATE study_plan_tasks SET title=%s,duration_minutes=%s,task_type=%s
+            WHERE id=%s AND user_id=%s AND completed=FALSE RETURNING id""",
+            (title[:160],max(5,min(int(duration_minutes),720)),task_type,task_id,user_id)).fetchone()
+
 def delete_study_plan_task(user_id, task_id):
     with connect() as conn:
         return conn.execute("DELETE FROM study_plan_tasks WHERE id=%s AND user_id=%s RETURNING id",(task_id,user_id)).fetchone()
@@ -683,50 +691,117 @@ def list_study_plan_programs(user_id):
             WHERE p.user_id=%s GROUP BY p.id ORDER BY p.updated_at DESC,p.id DESC""",(user_id,)).fetchall()
 
 def save_custom_study_program(user_id, program_id, title, start_date, days, daily_minutes, selections):
-    """Create/update a program, add chapter selections, and rebalance unfinished sessions.
-    Completed sessions are preserved; only pending sessions in this program are rebuilt.
-    selections is a list of (subject_id, chapter_id) pairs.
+    """Create/update a multi-subject program and rebalance pending sessions safely.
+
+    Completed sessions remain as history. Pending sessions are rebuilt only after
+    validating that the chosen window can accommodate every selected chapter.
+    Returns (program_id, created_count), or (None, 0) if the plan cannot fit.
     """
     days=max(1,min(int(days),30)); daily_minutes=max(30,min(int(daily_minutes),720))
     title=(title or 'My study plan').strip()[:100] or 'My study plan'
+    clean=[]; seen=set()
+    for subject_id,chapter_id in selections:
+        key=(int(subject_id),int(chapter_id))
+        if key not in seen:
+            seen.add(key); clean.append(key)
+    if not clean:
+        return None,0
+
     with connect() as conn:
         program=conn.execute("SELECT id FROM study_plan_programs WHERE id=%s AND user_id=%s",(program_id,user_id)).fetchone() if program_id else None
-        if program:
-            pid=program['id']
-            conn.execute("""UPDATE study_plan_programs SET title=%s,start_date=%s,days=%s,daily_minutes=%s,updated_at=CURRENT_TIMESTAMP
-                WHERE id=%s AND user_id=%s""",(title,start_date,days,daily_minutes,pid,user_id))
-        else:
+        pid=program['id'] if program else None
+        chapter_rows=[]
+        for subject_id,chapter_id in clean:
+            valid=conn.execute("""SELECT s.id AS subject_id,c.id AS chapter_id,s.name AS subject_name,c.name AS chapter_name
+                FROM subjects s JOIN chapters c ON c.subject_id=s.id AND c.user_id=s.user_id
+                WHERE s.id=%s AND s.user_id=%s AND c.id=%s""",(subject_id,user_id,chapter_id)).fetchone()
+            if valid: chapter_rows.append(valid)
+        if not chapter_rows:
+            return None,0
+
+        # Preserve completed work and account for its minutes on its actual date.
+        completed_by_date={}; completed_chapters_by_date={}; completed_coverage=set()
+        if pid:
+            completed=conn.execute("""SELECT due_date,chapter_id,duration_minutes FROM study_plan_tasks
+                WHERE program_id=%s AND user_id=%s AND completed=TRUE""",(pid,user_id)).fetchall()
+            plan_end=start_date+timedelta(days=days-1)
+            selected_ids_for_coverage={c['chapter_id'] for c in chapter_rows}
+            for row in completed:
+                completed_by_date[row['due_date']]=completed_by_date.get(row['due_date'],0)+int(row['duration_minutes'] or 0)
+                completed_chapters_by_date.setdefault(row['due_date'],set()).add(row['chapter_id'])
+                if start_date <= row['due_date'] <= plan_end and row['chapter_id'] in selected_ids_for_coverage:
+                    completed_coverage.add(row['chapter_id'])
+
+        # Assign useful focus blocks, while respecting the daily time budget.
+        day_slots=[]
+        for day_index in range(1,days+1):
+            due=start_date+timedelta(days=day_index-1)
+            remaining=max(0,daily_minutes-completed_by_date.get(due,0))
+            already=completed_chapters_by_date.get(due,set())
+            eligible=max(0,len(chapter_rows)-len(already.intersection({c['chapter_id'] for c in chapter_rows})))
+            if remaining >= 25:
+                slots=min(eligible,remaining//25)
+            elif remaining >= 10 and eligible:
+                slots=1
+            else:
+                slots=0
+            day_slots.append((day_index,due,remaining,slots,already))
+        if len(completed_coverage)+sum(item[3] for item in day_slots) < len(chapter_rows):
+            return None,0
+
+        # All validation is complete. Now apply changes in this transaction.
+        if not pid:
             row=conn.execute("""INSERT INTO study_plan_programs(user_id,title,start_date,days,daily_minutes)
                 VALUES(%s,%s,%s,%s,%s) RETURNING id""",(user_id,title,start_date,days,daily_minutes)).fetchone()
             pid=row['id']
-        for subject_id,chapter_id in selections:
-            valid=conn.execute("""SELECT s.id AS subject_id,c.id AS chapter_id FROM subjects s
-                JOIN chapters c ON c.subject_id=s.id AND c.user_id=s.user_id
-                WHERE s.id=%s AND s.user_id=%s AND c.id=%s""",(subject_id,user_id,chapter_id)).fetchone()
-            if not valid: continue
+        else:
+            conn.execute("""UPDATE study_plan_programs SET title=%s,start_date=%s,days=%s,daily_minutes=%s,updated_at=CURRENT_TIMESTAMP
+                WHERE id=%s AND user_id=%s""",(title,start_date,days,daily_minutes,pid,user_id))
+
+        # The selected chapter list is the active plan. Historical completed tasks remain.
+        conn.execute("DELETE FROM study_plan_program_chapters WHERE program_id=%s AND user_id=%s",(pid,user_id))
+        for chapter in chapter_rows:
             conn.execute("""INSERT INTO study_plan_program_chapters(program_id,user_id,subject_id,chapter_id)
-                VALUES(%s,%s,%s,%s) ON CONFLICT(program_id,chapter_id) DO NOTHING""",(pid,user_id,subject_id,chapter_id))
-        chapter_rows=conn.execute("""SELECT pc.subject_id,pc.chapter_id,s.name AS subject_name,c.name AS chapter_name
-            FROM study_plan_program_chapters pc JOIN subjects s ON s.id=pc.subject_id
-            JOIN chapters c ON c.id=pc.chapter_id WHERE pc.program_id=%s AND pc.user_id=%s
-            ORDER BY pc.added_at,pc.id""",(pid,user_id)).fetchall()
-        if not chapter_rows: return None,0
-        # Preserve completed work; rebalance only pending sessions.
+                VALUES(%s,%s,%s,%s) ON CONFLICT(program_id,chapter_id) DO NOTHING""",
+                (pid,user_id,chapter['subject_id'],chapter['chapter_id']))
         conn.execute("DELETE FROM study_plan_tasks WHERE program_id=%s AND user_id=%s AND completed=FALSE",(pid,user_id))
-        minutes_per_chapter=max(5,daily_minutes//len(chapter_rows))
-        created=0
-        for day_index in range(1,days+1):
-            due_date=start_date+timedelta(days=day_index-1)
-            for chapter in chapter_rows:
-                done=conn.execute("""SELECT 1 FROM study_plan_tasks WHERE program_id=%s AND user_id=%s
-                    AND chapter_id=%s AND schedule_day=%s AND completed=TRUE LIMIT 1""",(pid,user_id,chapter['chapter_id'],day_index)).fetchone()
-                if done: continue
-                task_title=f"{chapter['chapter_name']} · Day {day_index}"
+
+        created=0; cursor=0
+        selected_ids={c['chapter_id'] for c in chapter_rows}
+        for day_index,due,remaining,slots,already in day_slots:
+            if slots <= 0: continue
+            # Avoid scheduling the same chapter twice on a single date.
+            day_chapters=set(already).intersection(selected_ids)
+            candidates=[c for c in chapter_rows if c['chapter_id'] not in day_chapters]
+            if not candidates: continue
+            duration_base=remaining//slots; extra=remaining%slots
+            for slot in range(slots):
+                # Rotate fairly through chapters; skip any already completed that day.
+                chapter=None
+                for _ in range(len(chapter_rows)):
+                    candidate=chapter_rows[cursor % len(chapter_rows)]; cursor+=1
+                    if candidate['chapter_id'] not in day_chapters:
+                        chapter=candidate; break
+                if chapter is None: break
+                day_chapters.add(chapter['chapter_id'])
+                duration=duration_base+(1 if slot < extra else 0)
+                result=conn.execute("""SELECT COUNT(*)::int AS attempts,COALESCE(AVG(percentage),0)::float AS average
+                    FROM quiz_attempts WHERE user_id=%s AND chapter_id=%s""",(user_id,chapter['chapter_id'])).fetchone()
+                attempts=result['attempts']; average=result['average']
+                if attempts == 0:
+                    task_type='read'; priority='high'; action='Read notes and understand the key concepts'
+                elif average < 60:
+                    task_type='practice'; priority='high'; action='Practice weak areas and check explanations'
+                elif average < 80:
+                    task_type='quiz'; priority='normal'; action='Attempt a short practice quiz'
+                else:
+                    task_type='flashcards'; priority='low'; action='Revise with flashcards'
+                title_text=f"{chapter['chapter_name']} · Day {day_index}"
+                rationale=f"Suggested activity: {action}. Planned for day {day_index}; daily budget is {daily_minutes} minutes."
                 conn.execute("""INSERT INTO study_plan_tasks(user_id,subject_id,chapter_id,title,task_type,due_date,duration_minutes,
                     priority,rationale,program_id,schedule_day)
-                    VALUES(%s,%s,%s,%s,'revise',%s,%s,'normal',%s,%s,%s)""",
-                    (user_id,chapter['subject_id'],chapter['chapter_id'],task_title,due_date,minutes_per_chapter,
-                     f"Custom plan: day {day_index} of {days}; daily budget {daily_minutes} minutes.",pid,day_index))
+                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (user_id,chapter['subject_id'],chapter['chapter_id'],title_text,task_type,due,duration,priority,rationale,pid,day_index))
                 created+=1
         return pid,created
 
